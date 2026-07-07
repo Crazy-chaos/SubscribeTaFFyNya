@@ -1738,6 +1738,53 @@
             }
         }
 
+        .auth-login-btn,
+        .auth-logout-btn,
+        .auth-user-pill {
+            min-height: 40px;
+            border: 1px solid var(--glass-border);
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: var(--text);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.28s cubic-bezier(0.25, 0.8, 0.25, 1), background var(--transition-speed) ease, border-color var(--transition-speed) ease, color var(--transition-speed) ease;
+            cursor: pointer;
+        }
+
+        .auth-login-btn {
+            display: block;
+            padding: 0 22px;
+            border-radius: 50px;
+            font-size: 0.95rem;
+            font-weight: 800;
+        }
+
+        .auth-logout-btn {
+            padding: 0 16px;
+            border-radius: 999px;
+            font-size: 0.9rem;
+            font-weight: 800;
+        }
+
+        .auth-user-pill {
+            align-items: center;
+            gap: 10px;
+            padding: 4px 14px 4px 6px;
+            border-radius: 999px;
+            max-width: 260px;
+        }
+
+        .auth-login-btn:hover,
+        .auth-logout-btn:hover,
+        .auth-user-pill:hover {
+            background: rgba(255, 255, 255, 0.38);
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 8px 20px rgba(255, 121, 198, 0.5);
+            color: var(--pink);
+            text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+        }
+
 
     </style>
 </head>
@@ -2279,9 +2326,7 @@
             '.login-btn',
             '.tool-login-btn',
             '.requires-login',
-            '.locked-tool',
-            '#loginBtn',
-            '.auth-login-btn'
+            '.locked-tool'
         ].join(',');
 
         function openModal(modal) {
@@ -2394,7 +2439,7 @@
 
             const toolCard = trigger.closest('[data-tool-visibility]');
             const protectedToolClick = toolCard && toolCard.dataset.toolVisibility !== 'public';
-            const explicitLoginClick = trigger.matches('[data-action="login"], [data-login], .login-btn, .tool-login-btn, #loginBtn, .auth-login-btn');
+            const explicitLoginClick = trigger.matches('[data-action="login"], [data-login], .login-btn, .tool-login-btn');
             const protectedActionClick = trigger.matches('.requires-login, .locked-tool') || protectedToolClick;
 
             if (!explicitLoginClick && (!protectedActionClick || currentUser)) return;
