@@ -2249,7 +2249,11 @@
             });
             const data = await response.json().catch(() => ({ code: response.status, message: '请求失败' }));
             if (!response.ok || data.code !== 200) {
-                throw new Error(data.message || '请求失败');
+                const apiCode = Number(data.code);
+                const error = new Error(data.message || '请求失败');
+                error.status = !response.ok ? response.status : (apiCode >= 400 ? apiCode : response.status);
+                error.code = data.code;
+                throw error;
             }
             return data.data;
         }
@@ -2266,6 +2270,18 @@
         const profileMsg = document.getElementById('profileMsg');
         const nicknameInput = document.getElementById('nicknameInput');
         const DEFAULT_LOGIN_DOMAIN = '@crazychaos.top';
+        const LOGIN_REQUIRED_MESSAGE = '\u8bf7\u5148\u767b\u5f55\u540e\u518d\u8bbf\u95ee\u8be5\u5c0f\u5de5\u5177';
+        const PERMISSION_DENIED_MESSAGE = '\u6743\u9650\u4e0d\u8db3\uff0c\u65e0\u6cd5\u8bbf\u95ee\u8be5\u8d44\u6e90';
+        const LOGIN_TRIGGER_SELECTOR = [
+            '[data-action="login"]',
+            '[data-login]',
+            '.login-btn',
+            '.tool-login-btn',
+            '.requires-login',
+            '.locked-tool',
+            '#loginBtn',
+            '.auth-login-btn'
+        ].join(',');
 
         function openModal(modal) {
             modal.classList.add('open');
@@ -2315,6 +2331,78 @@
             }, 3000);
         }
 
+        function openLoginFromTools(message = '') {
+            setMessage(loginMsg, message || '');
+            setLoginStatus('');
+            openModal(loginModal);
+            initTurnstileWidget();
+        }
+
+        window.openLoginFromTools = openLoginFromTools;
+        window.showLoginModal = openLoginFromTools;
+        window.openLoginModal = openLoginFromTools;
+        window.openAuthModal = openLoginFromTools;
+
+        function getAuthErrorStatus(error) {
+            const candidates = [error?.status, error?.code].map(Number);
+            return candidates.find(status => status === 401 || status === 403) || 0;
+        }
+
+        function isProtectedTool(tool) {
+            return tool && tool.visibility && tool.visibility !== 'public';
+        }
+
+        function markProtectedToolElement(element, tool) {
+            if (!element || !tool) return element;
+            element.classList.remove('requires-login', 'locked-tool');
+            delete element.dataset.toolVisibility;
+            element.dataset.toolVisibility = tool.visibility || 'public';
+            if (isProtectedTool(tool)) {
+                element.classList.add('requires-login');
+                if (!currentUser) {
+                    element.classList.add('locked-tool');
+                }
+            }
+            return element;
+        }
+
+        function handleProtectedToolError(error) {
+            const status = getAuthErrorStatus(error);
+            if (status === 401) {
+                localStorage.removeItem('token');
+                renderUser(null);
+            }
+            if (status === 401 || (status === 403 && !currentUser)) {
+                openLoginFromTools(LOGIN_REQUIRED_MESSAGE);
+                showToast(LOGIN_REQUIRED_MESSAGE, true);
+                return true;
+            }
+            if (status === 403) {
+                showToast(PERMISSION_DENIED_MESSAGE, true);
+                return true;
+            }
+            return false;
+        }
+
+        document.addEventListener('click', (event) => {
+            const clickTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+            if (!clickTarget) return;
+
+            const trigger = clickTarget.closest(LOGIN_TRIGGER_SELECTOR);
+            if (!trigger || trigger.closest('#loginModal, #profileModal')) return;
+
+            const toolCard = trigger.closest('[data-tool-visibility]');
+            const protectedToolClick = toolCard && toolCard.dataset.toolVisibility !== 'public';
+            const explicitLoginClick = trigger.matches('[data-action="login"], [data-login], .login-btn, .tool-login-btn, #loginBtn, .auth-login-btn');
+            const protectedActionClick = trigger.matches('.requires-login, .locked-tool') || protectedToolClick;
+
+            if (!explicitLoginClick && (!protectedActionClick || currentUser)) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            openLoginFromTools(protectedActionClick && !currentUser ? LOGIN_REQUIRED_MESSAGE : '');
+        }, true);
+
         function normalizeLoginEmail(email, domain = DEFAULT_LOGIN_DOMAIN) {
             const value = String(email || '').trim();
             if (!value) return '';
@@ -2359,11 +2447,9 @@
 
 
 
-        loginBtn.addEventListener('click', () => {
-            setMessage(loginMsg, '');
-            setLoginStatus('');
-            openModal(loginModal);
-            initTurnstileWidget();
+        loginBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            openLoginFromTools();
         });
 
         userPill.addEventListener('click', () => {
@@ -2552,6 +2638,11 @@
                 activeTool = tool;
                 renderDetail(tool);
             } catch (err) {
+                if (handleProtectedToolError(err)) {
+                    detailTitle.textContent = getAuthErrorStatus(err) === 403 && currentUser ? '权限不足' : '需要登录';
+                    detailDescription.textContent = getAuthErrorStatus(err) === 403 && currentUser ? PERMISSION_DENIED_MESSAGE : LOGIN_REQUIRED_MESSAGE;
+                    return;
+                }
                 detailTitle.textContent = '载入失败';
                 detailDescription.textContent = err.message || '找不到该资源或您没有足够的权限查看。';
             }
@@ -2608,12 +2699,14 @@
                 htmlPreviewBox.style.display = 'block';
                 htmlIframe.src = downloadApiUrl;
                 fullScreenBtn.href = downloadApiUrl;
+                markProtectedToolElement(fullScreenBtn, tool);
 
                 const openBtn = document.createElement('a');
                 openBtn.className = 'action-btn';
                 openBtn.href = downloadApiUrl;
                 openBtn.target = '_blank';
                 openBtn.textContent = '新窗口中打开网页工具';
+                markProtectedToolElement(openBtn, tool);
                 detailActionBox.appendChild(openBtn);
             } else if (tool.type === 'software') {
                 softwareDetailBox.style.display = 'block';
@@ -2625,6 +2718,7 @@
                     downloadBtn.className = 'action-btn';
                     downloadBtn.href = downloadApiUrl;
                     downloadBtn.textContent = `下载客户端 (${tool.version || '最新版'})`;
+                    markProtectedToolElement(downloadBtn, tool);
                     downloadBtn.addEventListener('click', () => {
                         setTimeout(() => { detailDownloads.textContent = Number(detailDownloads.textContent) + 1; }, 800);
                     });
@@ -2636,6 +2730,7 @@
                     downloadBtn.className = 'action-btn';
                     downloadBtn.href = downloadApiUrl;
                     downloadBtn.textContent = '立即下载资源文件';
+                    markProtectedToolElement(downloadBtn, tool);
                     downloadBtn.addEventListener('click', () => {
                         setTimeout(() => { detailDownloads.textContent = Number(detailDownloads.textContent) + 1; }, 800);
                     });
@@ -2647,6 +2742,7 @@
                 jumpBtn.href = downloadApiUrl;
                 jumpBtn.target = '_blank';
                 jumpBtn.textContent = '立即访问外部链接 ↗';
+                markProtectedToolElement(jumpBtn, tool);
                 jumpBtn.addEventListener('click', () => {
                     setTimeout(() => { detailDownloads.textContent = Number(detailDownloads.textContent) + 1; }, 800);
                 });
@@ -2775,6 +2871,7 @@
                     data.list.forEach(tool => {
                         const card = document.createElement('article');
                         card.className = 'tool-card';
+                        markProtectedToolElement(card, tool);
                         if (tool.isPinned) card.style.borderColor = 'var(--pink)';
 
                         // 构建卡片内部 HTML
@@ -2847,6 +2944,11 @@
                 paginationRow.style.display = totalPages > 1 ? 'flex' : 'none';
 
             } catch (err) {
+                if (handleProtectedToolError(err)) {
+                    cardsGrid.innerHTML = `<div style="grid-column: span 3; text-align:center; padding: 40px;">${getAuthErrorStatus(err) === 403 && currentUser ? PERMISSION_DENIED_MESSAGE : LOGIN_REQUIRED_MESSAGE}</div>`;
+                    paginationRow.style.display = 'none';
+                    return;
+                }
                 cardsGrid.innerHTML = `<div style="grid-column: span 3; text-align:center; padding: 40px; color:#ff4d4d;">资源加载失败: ${err.message}</div>`;
                 paginationRow.style.display = 'none';
             }
