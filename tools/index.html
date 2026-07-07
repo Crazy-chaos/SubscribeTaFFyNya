@@ -12,7 +12,7 @@
     <link rel="icon" href="../123/emoji_23.avif" type="image/avif">
     <link rel="apple-touch-icon" href="../123/emoji_23.avif">
     <link rel="manifest" href="../manifest.webmanifest">
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 
     <script>
         (function() {
@@ -2030,6 +2030,7 @@
             <label for="loginPassword">密码</label>
             <input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="输入邮箱密码" required>
             <div class="auth-turnstile" id="loginTurnstile"></div>
+            <input type="hidden" name="cf-turnstile-response" id="turnstileTokenInput">
             <div class="auth-actions">
                 <button type="button" id="closeLoginBtn">取消</button>
                 <button type="submit">登录</button>
@@ -2335,7 +2336,7 @@
             setMessage(loginMsg, message || '');
             setLoginStatus('');
             openModal(loginModal);
-            initTurnstileWidget();
+            setTimeout(initTurnstileWidget, 320);
         }
 
         window.openLoginFromTools = openLoginFromTools;
@@ -2410,35 +2411,76 @@
         }
 
         let turnstileWidgetId = null;
+        let websiteConfigPromise = null;
+
+        async function loadWebsiteConfig() {
+            if (!websiteConfigPromise) {
+                websiteConfigPromise = apiFetch('/setting/websiteConfig')
+                    .then(config => {
+                        window.turnstileSiteKey = config.siteKey;
+                        if (config.profileData && window.renderProfile) {
+                            window.renderProfile(config.profileData);
+                        }
+                        return config;
+                    });
+            }
+            return websiteConfigPromise;
+        }
+
+        function waitForTurnstile(retries = 30) {
+            if (window.turnstile && typeof window.turnstile.render === 'function') {
+                return Promise.resolve(window.turnstile);
+            }
+            if (retries <= 0) {
+                return Promise.reject(new Error('Turnstile script is not ready'));
+            }
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    waitForTurnstile(retries - 1).then(resolve, reject);
+                }, 100);
+            });
+        }
+
+        function setTurnstileToken(token = '') {
+            const tokenInput = document.getElementById('turnstileTokenInput');
+            if (tokenInput) {
+                tokenInput.value = token;
+            }
+        }
+
+        function getTurnstileSize() {
+            return window.matchMedia('(max-width: 380px)').matches ? 'compact' : 'flexible';
+        }
+
         async function initTurnstileWidget() {
             try {
-                if (turnstileWidgetId !== null && window.turnstile) {
-                    window.turnstile.reset(turnstileWidgetId);
+                const config = await loadWebsiteConfig();
+                const siteKey = window.turnstileSiteKey || config.siteKey;
+                const turnstile = await waitForTurnstile();
+                const el = document.getElementById('loginTurnstile');
+                if (!el || !siteKey) return;
+
+                setTurnstileToken('');
+                el.classList.toggle('is-compact', getTurnstileSize() === 'compact');
+
+                if (turnstileWidgetId !== null) {
+                    turnstile.reset(turnstileWidgetId);
                     return;
                 }
-                let siteKey = window.turnstileSiteKey;
-                if (!siteKey) {
-                    const config = await apiFetch('/setting/websiteConfig');
-                    siteKey = config.siteKey;
-                    window.turnstileSiteKey = siteKey;
-                    if (config.profileData && window.renderProfile) {
-                        window.renderProfile(config.profileData);
-                    }
-                }
-                if (!window.turnstile) {
-                    setTimeout(initTurnstileWidget, 100);
-                    return;
-                }
-                if (siteKey && window.turnstile) {
-                    const el = document.getElementById('loginTurnstile');
-                    if (el) {
-                        el.innerHTML = '';
-                        turnstileWidgetId = window.turnstile.render(el, {
-                            sitekey: siteKey,
-                            theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light'
-                        });
-                    }
-                }
+
+                el.innerHTML = '';
+                turnstileWidgetId = turnstile.render(el, {
+                    sitekey: siteKey,
+                    theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+                    size: getTurnstileSize(),
+                    appearance: 'always',
+                    retry: 'auto',
+                    'refresh-expired': 'auto',
+                    'refresh-timeout': 'auto',
+                    callback: token => setTurnstileToken(token),
+                    'expired-callback': () => setTurnstileToken(''),
+                    'error-callback': () => setTurnstileToken('')
+                });
             } catch (error) {
                 console.warn('Failed to load Turnstile config:', error);
                 setMessage(loginMsg, '人机验证配置加载失败: ' + (error.message || '未知错误'), true);
@@ -2499,13 +2541,19 @@
 
                 await loadLoginUser();
                 loginForm.reset();
-                window.turnstile?.reset();
+                setTurnstileToken('');
+                if (turnstileWidgetId !== null) {
+                    window.turnstile?.reset(turnstileWidgetId);
+                }
                 setLoginStatus('success');
                 setMessage(loginMsg, '登录成功');
                 showToast('登录成功！');
                 setTimeout(() => closeModal(loginModal), 720);
             } catch (error) {
-                window.turnstile?.reset();
+                setTurnstileToken('');
+                if (turnstileWidgetId !== null) {
+                    window.turnstile?.reset(turnstileWidgetId);
+                }
                 setLoginStatus('error');
                 setMessage(loginMsg, error.message || '登录失败', true);
                 showToast(error.message || '登录失败', true);
@@ -3677,7 +3725,7 @@
         loadMeta();
         
         // Fetch website config on page load to initialize Turnstile sitekey and profile card
-        apiFetch('/setting/websiteConfig')
+        loadWebsiteConfig()
             .then(config => {
                 window.turnstileSiteKey = config.siteKey;
                 if (window.renderProfile) {
