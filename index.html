@@ -165,7 +165,10 @@
         }
 
         html {
+            min-height: 100%;
+            background: var(--html-bg);
             overscroll-behavior: contain;
+            transition: background var(--transition-speed) ease;
         }
 
         @keyframes gradientBG {
