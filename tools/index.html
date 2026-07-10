@@ -54,6 +54,11 @@
             --post-card-bg: rgba(255, 255, 255, 0.16);
             --post-card-border: rgba(255, 255, 255, 0.36);
             --card-bg-hover: rgba(255, 255, 255, 0.22);
+            --radius-control: 10px;
+            --radius-card: 24px;
+            --radius-panel: 24px;
+            --radius-pill: 999px;
+            --focus-ring: 0 0 0 3px rgba(255, 121, 198, 0.32);
         }
 
         html.dark {
@@ -183,7 +188,7 @@
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
             border: 1px solid var(--modal-card-border);
-            border-radius: 24px;
+            border-radius: var(--radius-card);
             box-shadow: var(--shadow);
             padding: 26px;
             box-sizing: border-box;
@@ -222,7 +227,7 @@
             height: 46px;
             padding: 0 14px;
             box-sizing: border-box;
-            border-radius: 15px;
+            border-radius: var(--radius-control);
             border: 1px solid var(--input-border);
             outline: none;
             color: var(--text);
@@ -239,14 +244,14 @@
         }
 
         .auth-email-row input {
-            border-radius: 15px 0 0 15px;
+            border-radius: var(--radius-control) 0 0 var(--radius-control);
             border-right: 0;
         }
 
         .auth-email-row select {
             height: 46px;
             padding: 0 12px;
-            border-radius: 0 15px 15px 0;
+            border-radius: 0 var(--radius-control) var(--radius-control) 0;
             border: 1px solid var(--input-border);
             outline: none;
             color: var(--text);
@@ -292,7 +297,7 @@
             flex: 1;
             min-height: 44px;
             border: 1px solid var(--glass-border);
-            border-radius: 999px;
+            border-radius: var(--radius-pill);
             cursor: pointer;
             color: var(--text);
             font-weight: 800;
@@ -406,6 +411,16 @@
 
         * {
             box-sizing: border-box;
+        }
+
+        :where(button, a, input, select, textarea):focus-visible {
+            outline: 2px solid var(--pink);
+            outline-offset: 2px;
+            box-shadow: var(--focus-ring);
+        }
+
+        body.modal-open {
+            overflow: hidden;
         }
 
         html,
@@ -1138,7 +1153,7 @@
             border: 1px solid var(--glass-border);
             background: var(--glass);
             box-shadow: var(--shadow);
-            border-radius: 28px;
+            border-radius: var(--radius-panel);
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
             padding: 28px;
@@ -1264,7 +1279,7 @@
         }
 
         .tool-card {
-            border-radius: 24px;
+            border-radius: var(--radius-card);
             border: 1px solid var(--post-card-border);
             background: var(--post-card-bg);
             overflow: hidden;
@@ -1378,7 +1393,7 @@
         .detail-cover {
             width: 100%;
             height: 220px;
-            border-radius: 20px;
+            border-radius: var(--radius-card);
             object-fit: cover;
             background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
             border: 1px solid var(--glass-border);
@@ -1416,7 +1431,7 @@
         .iframe-container {
             width: 100%;
             height: 600px;
-            border-radius: 20px;
+            border-radius: var(--radius-card);
             overflow: hidden;
             border: 1px solid var(--glass-border);
             background: #fff;
@@ -1432,7 +1447,7 @@
 
         .software-box {
             background: rgba(255, 255, 255, 0.08);
-            border-radius: 18px;
+            border-radius: var(--radius-card);
             padding: 20px;
             margin-top: 20px;
             border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1470,7 +1485,7 @@
 
         .blog-link-card {
             padding: 16px;
-            border-radius: 16px;
+            border-radius: var(--radius-card);
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid var(--glass-border);
             color: #fff;
@@ -1533,7 +1548,7 @@
             backdrop-filter: blur(25px);
             -webkit-backdrop-filter: blur(25px);
             border: 1px solid var(--glass-border);
-            border-radius: 28px;
+            border-radius: var(--radius-card);
             box-shadow: 0 18px 55px rgba(0, 0, 0, 0.3);
             padding: 28px;
             color: #fff;
@@ -1584,7 +1599,7 @@
         .form-group input, .form-group select, .form-group textarea {
             height: 40px;
             padding: 0 12px;
-            border-radius: 10px;
+            border-radius: var(--radius-control);
             border: 1px solid var(--glass-border);
             background: rgba(255, 255, 255, 0.15);
             color: #fff;
@@ -1655,7 +1670,7 @@
         .modal-footer button {
             height: 40px;
             padding: 0 24px;
-            border-radius: 12px;
+            border-radius: var(--radius-control);
             font-weight: bold;
             cursor: pointer;
         }
@@ -1717,7 +1732,7 @@
             }
 
             .hero {
-                border-radius: 22px;
+                border-radius: var(--radius-panel);
                 padding: 24px;
             }
 
@@ -1755,14 +1770,14 @@
         .auth-login-btn {
             display: block;
             padding: 0 22px;
-            border-radius: 50px;
+            border-radius: var(--radius-pill);
             font-size: 0.95rem;
             font-weight: 800;
         }
 
         .auth-logout-btn {
             padding: 0 16px;
-            border-radius: 999px;
+            border-radius: var(--radius-pill);
             font-size: 0.9rem;
             font-weight: 800;
         }
@@ -1771,7 +1786,7 @@
             align-items: center;
             gap: 10px;
             padding: 4px 14px 4px 6px;
-            border-radius: 999px;
+            border-radius: var(--radius-pill);
             max-width: 260px;
         }
 
@@ -1783,6 +1798,17 @@
             box-shadow: 0 8px 20px rgba(255, 121, 198, 0.5);
             color: var(--pink);
             text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                scroll-behavior: auto !important;
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
 
 
@@ -2060,13 +2086,13 @@
                     <button type="submit" class="btn-submit">保存</button>
                 </div>
             </form>
-
-
+        </div>
+    </div>
 
     <!-- 登录模态框 -->
-    <div class="auth-modal" id="loginModal">
+    <div class="auth-modal" id="loginModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="loginModalTitle">
         <form class="auth-card" id="loginForm">
-            <h2>登录邮箱账号</h2>
+            <h2 id="loginModalTitle">登录邮箱账号</h2>
             <label for="loginEmail">邮箱</label>
             <div class="auth-email-row">
                 <input id="loginEmail" name="email" type="text" inputmode="email" autocomplete="username" placeholder="name" required>
@@ -2088,11 +2114,11 @@
     </div>
 
     <!-- 个人设置模态框 -->
-    <div class="auth-modal" id="profileModal">
+    <div class="auth-modal" id="profileModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="profileModalTitle">
         <form class="auth-card" id="profileForm">
             <div class="auth-profile-head">
                 <img class="auth-avatar" src="../123/emoji_23.avif" alt="avatar">
-                <h2>个人设置</h2>
+                <h2 id="profileModalTitle">个人设置</h2>
             </div>
             <label for="nicknameInput">昵称</label>
             <input id="nicknameInput" name="nickname" type="text" maxlength="24" autocomplete="nickname" placeholder="给自己起个名字">
@@ -2109,9 +2135,9 @@
     </div>
 
     <!-- 个人简介自定义模态框 -->
-    <div class="auth-modal" id="profileEditModal">
+    <div class="auth-modal" id="profileEditModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="profileEditModalTitle">
         <form class="auth-card" id="profileEditForm" style="width: min(440px, 95vw);">
-            <h2>自定义个人简介</h2>
+            <h2 id="profileEditModalTitle">自定义个人简介</h2>
             <label for="editProfileName">昵称 / ID</label>
             <input id="editProfileName" type="text" maxlength="20" placeholder="例如：疯狂混沌" required>
             
@@ -2328,19 +2354,32 @@
             '.requires-login',
             '.locked-tool'
         ].join(',');
+        let modalReturnFocus = null;
 
         function openModal(modal) {
+            if (!modal) return;
+            modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
             modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-open');
             requestAnimationFrame(() => {
                 modal.classList.add('show');
+                const firstControl = modal.querySelector('input:not([type="hidden"]), select, textarea, button');
+                firstControl?.focus({ preventScroll: true });
             });
         }
 
         function closeModal(modal) {
+            if (!modal) return;
             modal.classList.remove('show');
+            modal.setAttribute('aria-hidden', 'true');
             setTimeout(() => {
                 if (!modal.classList.contains('show')) {
                     modal.classList.remove('open');
+                    if (!document.querySelector('.auth-modal.show, .modal.open')) {
+                        document.body.classList.remove('modal-open');
+                    }
+                    modalReturnFocus?.focus({ preventScroll: true });
                 }
             }, 260);
         }
@@ -2456,6 +2495,7 @@
         }
 
         let turnstileWidgetId = null;
+        let turnstileWidgetSize = null;
         let websiteConfigPromise = null;
 
         async function loadWebsiteConfig() {
@@ -2467,6 +2507,10 @@
                             window.renderProfile(config.profileData);
                         }
                         return config;
+                    })
+                    .catch(error => {
+                        websiteConfigPromise = null;
+                        throw error;
                     });
             }
             return websiteConfigPromise;
@@ -2504,20 +2548,25 @@
                 const turnstile = await waitForTurnstile();
                 const el = document.getElementById('loginTurnstile');
                 if (!el || !siteKey) return;
+                const nextSize = getTurnstileSize();
 
                 setTurnstileToken('');
-                el.classList.toggle('is-compact', getTurnstileSize() === 'compact');
+                el.classList.toggle('is-compact', nextSize === 'compact');
 
                 if (turnstileWidgetId !== null) {
-                    turnstile.reset(turnstileWidgetId);
-                    return;
+                    if (turnstileWidgetSize === nextSize) {
+                        turnstile.reset(turnstileWidgetId);
+                        return;
+                    }
+                    turnstile.remove(turnstileWidgetId);
+                    turnstileWidgetId = null;
                 }
 
                 el.innerHTML = '';
                 turnstileWidgetId = turnstile.render(el, {
                     sitekey: siteKey,
                     theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-                    size: getTurnstileSize(),
+                    size: nextSize,
                     appearance: 'always',
                     retry: 'auto',
                     'refresh-expired': 'auto',
@@ -2526,6 +2575,7 @@
                     'expired-callback': () => setTurnstileToken(''),
                     'error-callback': () => setTurnstileToken('')
                 });
+                turnstileWidgetSize = nextSize;
             } catch (error) {
                 console.warn('Failed to load Turnstile config:', error);
                 setMessage(loginMsg, '人机验证配置加载失败: ' + (error.message || '未知错误'), true);
@@ -2558,6 +2608,12 @@
 
         profileModal.addEventListener('click', (event) => {
             if (event.target === profileModal) closeModal(profileModal);
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            const openModalElement = document.querySelector('.auth-modal.show');
+            if (openModalElement) closeModal(openModalElement);
         });
 
         loginForm.addEventListener('submit', async (event) => {
