@@ -2139,6 +2139,41 @@
     color: var(--muted);
 }
 
+/* ---------- 提醒设置 ---------- */
+.notify-block {
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 12px;
+    margin: 12px 0;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.notify-head {
+    font-size: 0.84rem;
+    font-weight: 800;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.notify-state {
+    margin-left: auto;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.24);
+}
+
+.notify-state.on {
+    background: rgba(29, 158, 117, 0.55);
+}
+
+.notify-state.off {
+    background: rgba(226, 75, 74, 0.45);
+}
+
     </style>
 </head>
 <body>
@@ -2316,6 +2351,7 @@
                         <div class="chat-me-name" id="chatMeName">游客</div>
                         <div class="chat-me-sub" id="chatMeSub">仅可浏览公开群聊</div>
                     </div>
+                    <button class="chat-key-btn" id="notifyBtn" type="button" title="新消息提醒">🔔</button>
                     <button class="chat-key-btn" id="keyBtn" type="button" title="端到端加密密钥">🔑</button>
                 </div>
             </aside>
@@ -2446,6 +2482,37 @@
                 <button type="button" id="keyClose">关闭</button>
             </div>
             <div class="modal-msg" id="keyMsg"></div>
+        </div>
+    </div>
+
+    <!-- ===== 新消息提醒 ===== -->
+    <div class="auth-modal chat-modal" id="notifyModal" aria-hidden="true">
+        <div class="auth-card">
+            <h2>新消息提醒</h2>
+            <p class="field-hint">不用一直开着网页也能知道有新消息。两条通道可以同时开。</p>
+
+            <div class="notify-block">
+                <div class="notify-head">浏览器通知 <span class="notify-state" id="pushState">检测中…</span></div>
+                <div class="field-hint">点一下允许，之后手机上也能收到系统通知（iOS 需要先“添加到主屏幕”）。</div>
+                <div class="btn-row" style="margin-top:8px;">
+                    <button class="btn-sm primary" type="button" id="pushEnable">开启通知</button>
+                    <button class="btn-sm" type="button" id="pushTest">发条测试</button>
+                    <button class="btn-sm" type="button" id="pushDisable">关闭</button>
+                </div>
+            </div>
+
+            <div class="notify-block">
+                <div class="notify-head">QQ 提醒</div>
+                <div class="field-hint">填一次就全站生效，群里和私聊有人发消息都会私聊提醒你。需要管理员先配好机器人。</div>
+                <label for="myQQGlobal">我的 QQ 号</label>
+                <input id="myQQGlobal" class="chat-input" type="text" inputmode="numeric" placeholder="留空表示不接收">
+                <button class="btn-sm primary" type="button" id="saveGlobalQQ" style="margin-top:8px;">保存 QQ</button>
+            </div>
+
+            <div class="modal-msg" id="notifyMsg"></div>
+            <div class="auth-actions">
+                <button type="button" id="notifyClose">关闭</button>
+            </div>
         </div>
     </div>
 
@@ -3617,15 +3684,14 @@
         return '<div class="' + cls + '" style="background:' + av.bg + '">' + esc(av.ch) + '</div>';
     }
 
+    // 只改聊天自己的头像位；站长「个人简介」卡与顶部个人简介按钮由站点配置控制，一律不碰
     function applyAvatar(src) {
         var url = avatarSrc(src);
-        ['chatMeAvatar', 'userPillAvatar', 'headerProfileAvatar', 'modalAvatarImg'].forEach(function (id) {
+        if (!url) return;
+        ['chatMeAvatar', 'modalAvatarImg'].forEach(function (id) {
             var el = $(id);
-            if (el && url) el.src = url;
+            if (el) el.src = url;
         });
-        var pill = document.querySelector('#userPill .auth-avatar');
-        if (pill && url) pill.src = url;
-        document.querySelectorAll('#profileModal .auth-avatar').forEach(function (el) { if (url) el.src = url; });
     }
 
     function timeLabel(ts) {
@@ -4159,7 +4225,6 @@
             var adminBtn = $('adminOpenBtn');
             if (adminBtn) adminBtn.style.display = r.isAdmin ? 'inline-flex' : 'none';
             applyAvatar(r.user.avatar);
-            renderProfileUid(r.user);
             addAvatarEntryToProfileModal();
             await initIdentity();
             loadBots();
@@ -4562,17 +4627,119 @@
     }
 
     /* ------------------------------------------------------------ 个人资料里的 UID / 头像 */
-    function renderProfileUid(user) {
-        var nameEl = document.querySelector('#profilePopover .profile-card-name') || document.querySelector('.profile-card-name');
-        if (!nameEl || !user) return;
-        var el = $('profileCardUid');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'profileCardUid';
-            el.style.cssText = 'font-size:.72rem;opacity:.85;margin-top:3px;font-family:ui-monospace,Menlo,monospace;';
-            nameEl.parentNode.insertBefore(el, nameEl.nextSibling);
+    /* ------------------------------------------------------------ 新消息提醒（Web Push / QQ） */
+    var swReg = null;
+
+    function setNotifyMsg(msg, isErr) {
+        var el = $('notifyMsg');
+        if (!el) return;
+        el.textContent = msg || '';
+        el.className = 'modal-msg' + (isErr ? ' error' : '');
+    }
+
+    function b64uToBytes(str) {
+        var s2 = String(str || '').replace(/-/g, '+').replace(/_/g, '/');
+        var bin = atob(s2 + '='.repeat((4 - s2.length % 4) % 4));
+        var out = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+    }
+
+    async function ensureSW() {
+        if (!('serviceWorker' in navigator)) throw new Error('这个浏览器不支持 Service Worker');
+        if (!('PushManager' in window)) throw new Error('这个浏览器不支持系统通知');
+        if (swReg) return swReg;
+        swReg = await navigator.serviceWorker.register('/chat/sw.js', { scope: '/chat/' });
+        await navigator.serviceWorker.ready;
+        return swReg;
+    }
+
+    function setPushState(text, cls) {
+        var el = $('pushState');
+        if (!el) return;
+        el.textContent = text;
+        el.className = 'notify-state' + (cls ? ' ' + cls : '');
+    }
+
+    async function refreshPushState() {
+        if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+            setPushState('不支持', 'off');
+            return;
         }
-        el.textContent = 'UID ' + (user.uid || '-') + ' · ' + user.id;
+        if (Notification.permission === 'denied') {
+            setPushState('已被浏览器拒绝', 'off');
+            return;
+        }
+        try {
+            var reg = await navigator.serviceWorker.getRegistration('/chat/');
+            var sub = reg ? await reg.pushManager.getSubscription() : null;
+            if (!sub && !reg && Notification.permission === 'granted') {
+                reg = await ensureSW();
+                sub = await reg.pushManager.getSubscription();
+            }
+            setPushState(sub ? '已开启' : '未开启', sub ? 'on' : 'off');
+        } catch (e) {
+            setPushState('未开启', 'off');
+        }
+    }
+
+    async function enablePush() {
+        try {
+            setNotifyMsg('正在申请通知权限…');
+            var perm = Notification.permission === 'granted'
+                ? 'granted' : await Notification.requestPermission();
+            if (perm !== 'granted') throw new Error('你拒绝了通知权限，可以在浏览器地址栏左侧改回来');
+            var cfg = await capi('/api/push/config');
+            var reg = await ensureSW();
+            var sub = await reg.pushManager.getSubscription();
+            if (!sub) {
+                sub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: b64uToBytes(cfg.publicKey)
+                });
+            }
+            await capi('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
+            setPushState('已开启', 'on');
+            setNotifyMsg('已开启，可以点「发条测试」验证一下');
+        } catch (e) {
+            setPushState('未开启', 'off');
+            setNotifyMsg(e.message, true);
+        }
+    }
+
+    async function disablePush() {
+        try {
+            var reg = await navigator.serviceWorker.getRegistration('/chat/');
+            var sub = reg ? await reg.pushManager.getSubscription() : null;
+            if (sub) {
+                await capi('/api/push/subscribe', { method: 'DELETE', body: { endpoint: sub.endpoint } }).catch(function () { });
+                await sub.unsubscribe();
+            }
+            setPushState('未开启', 'off');
+            setNotifyMsg('已关闭浏览器通知');
+        } catch (e) {
+            setNotifyMsg(e.message, true);
+        }
+    }
+
+    async function testPush() {
+        try {
+            var r = await capi('/api/push/test', { method: 'POST', body: {} });
+            setNotifyMsg('已发送 ' + r.sent + ' 条，成功 ' + r.ok + ' 条');
+        } catch (e) {
+            setNotifyMsg(e.message, true);
+        }
+    }
+
+    async function saveGlobalQQ() {
+        try {
+            var v = ($('myQQGlobal').value || '').trim();
+            var r = await capi('/api/me/qq', { method: 'POST', body: { qq: v } });
+            state.me.qq = r.qq;
+            setNotifyMsg(r.qq ? '已绑定 QQ ' + r.qq + '，有人在群里或私聊发消息会提醒你' : '已取消 QQ 提醒');
+        } catch (e) {
+            setNotifyMsg(e.message, true);
+        }
     }
 
     function addAvatarEntryToProfileModal() {
@@ -4872,6 +5039,19 @@
         };
         $('amCancel').onclick = function () { closeModal($('addMemberModal')); };
 
+        $('notifyClose').onclick = function () { closeModal($('notifyModal')); };
+        $('notifyBtn').onclick = function () {
+            if (!state.me) return openLogin('登录后才能设置提醒');
+            setNotifyMsg('');
+            $('myQQGlobal').value = (state.me && state.me.qq) || '';
+            openModal($('notifyModal'));
+            refreshPushState();
+        };
+        $('pushEnable').onclick = enablePush;
+        $('pushDisable').onclick = disablePush;
+        $('pushTest').onclick = testPush;
+        $('saveGlobalQQ').onclick = saveGlobalQQ;
+
         var meAv = $('chatMeAvatar');
         if (meAv) {
             meAv.style.cursor = 'pointer';
@@ -4977,6 +5157,12 @@
         renderMessages();
         connectStream();
         setInterval(function () { if (state.me) loadConversations(); }, 45000);
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/chat/sw.js', { scope: '/chat/' }).catch(function () { });
+        }
+        var deepConv = new URLSearchParams(location.search).get('conv');
+        if (deepConv && state.me) openConversation(deepConv);
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
