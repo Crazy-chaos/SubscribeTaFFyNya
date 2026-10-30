@@ -2570,6 +2570,7 @@
         <div class="auth-card">
             <h2>端到端加密密钥</h2>
             <div id="keyModalBody"></div>
+            <div class="modal-msg" id="keyMsg"></div>
             <div class="auth-actions">
                 <button type="button" id="keyClose">关闭</button>
             </div>
@@ -3606,9 +3607,11 @@
     }
 
     async function createIdentity() {
+        if (!state.me) return false;
         var pair = await generateIdentity();
         var code = genRecoveryCode();
         var backup = await wrapPrivForBackup(pair.privB64, code);
+        // 先写服务器：写不进去就不落本地，否则本机会有一把服务器不认的钥匙
         await capi('/chat/me/keys', { method: 'POST', body: { pubKey: pair.pubB64, keyBackup: backup } });
         await IDB.set(identityStorageKey(), { privB64: pair.privB64, pubB64: pair.pubB64, createdAt: Date.now() });
         identity.id = state.me.id;
@@ -3650,7 +3653,13 @@
         };
         $('recoverFresh').onclick = async function () {
             if (!confirm('重新生成后，之前的私聊和私密群消息将永久无法解密，确定继续？')) return;
-            await createIdentity();
+            setKeyMsg('正在生成密钥…');
+            try {
+                var ok = await createIdentity();
+                if (!ok) setKeyMsg('生成失败：请确认已登录后重试', true);
+            } catch (e) {
+                setKeyMsg('生成失败：' + (e && e.message ? e.message : '未知错误') + '（本次没有改动你的旧密钥）', true);
+            }
         };
         return false;
     }
