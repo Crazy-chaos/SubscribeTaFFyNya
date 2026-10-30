@@ -4478,10 +4478,20 @@
        只取上次最大 id 之后的新消息，正常情况每次只回 0~几条，开销很小。 */
     var pollTimer = null;
     var listTimer = null;
+    var lastListAt = 0;
 
     function stopPolling() {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         if (listTimer) { clearInterval(listTimer); listTimer = null; }
+    }
+
+    /* 会话列表故意刷得很稀：D1 免费额度是按“扫描行数”算的，
+       列表查询会扫所有会话，15 秒一次在群多的时候一天能烧掉几百万行。
+       真正需要“及时”的只有当前会话，靠 pollActive 拉增量；有新消息时再顺带刷列表。 */
+    function refreshListSoon() {
+        if (Date.now() - lastListAt < 10000) return;
+        lastListAt = Date.now();
+        loadConversations();
     }
 
     function connectStream() {
@@ -4489,8 +4499,8 @@
         pollTimer = setInterval(pollActive, 4000);
         listTimer = setInterval(function () {
             if (document.hidden || !state.me) return;
-            loadConversations();
-        }, 15000);
+            refreshListSoon();
+        }, 60000);
     }
 
     async function pollActive() {
@@ -4515,6 +4525,7 @@
             if (!added) return;
 
             renderMessages(true);
+            refreshListSoon();
             if (state.me && identity.priv) {
                 var last = state.messages[state.messages.length - 1];
                 if (last) capi('/chat/conversations/' + conv.id + '/read', { method: 'POST', body: { id: last.id } }).catch(function () { });
