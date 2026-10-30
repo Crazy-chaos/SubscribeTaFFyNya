@@ -3333,7 +3333,6 @@
         es: null,
         reportTarget: null,
         bots: [],
-        myQQ: '',
         avatarTarget: 'user',
         avatarPick: '',
         imgCache: new Map(),
@@ -4027,10 +4026,6 @@
             state.active = info.conversation;
             state.members = info.members || [];
             state.pubCache.clear();
-            state.myQQ = '';
-            if (state.me && state.active.type === 'group' && state.active.myStatus === 'active') {
-                try { state.myQQ = (await capi('/api/conversations/' + id + '/my-qq')).qq || ''; } catch (e) { state.myQQ = ''; }
-            }
             renderHeader();
             renderComposer();
             renderInfo();
@@ -4221,26 +4216,6 @@
             html += '</div><div id="infoInviteBox" style="margin-top:10px;"></div></div>';
         }
 
-        if (conv.type === 'group' && conv.myStatus === 'active') {
-            html += '<div class="info-section"><h3>QQ 提醒</h3>';
-            if (isOwner) {
-                html += '<div class="field-hint">选一个机器人。群里有新消息时，它会私聊提醒在下面绑定了 QQ 的成员' +
-                    (conv.encMode === 'e2ee' ? '；加密群只提醒“有新消息”，不出正文' : '') + '。</div>';
-                html += '<select id="notifyBotSelect" class="chat-select"><option value="">不启用</option>' +
-                    state.bots.map(function (b) {
-                        return '<option value="' + esc(b.id) + '"' + (b.id === conv.notifyBotId ? ' selected' : '') + '>' +
-                            esc(b.name) + '</option>';
-                    }).join('') + '</select>';
-                html += '<button class="btn-sm primary" data-act="saveNotify" style="margin-top:8px;">保存机器人</button>';
-            } else {
-                html += '<div class="field-hint">通知机器人由群主设置。</div>';
-            }
-            html += '<label class="info-label" for="myQQInput">我的 QQ 号（接收新消息提醒）</label>' +
-                '<input id="myQQInput" class="chat-input" type="text" inputmode="numeric" placeholder="不填则收不到提醒" value="' + esc(state.myQQ || '') + '">' +
-                '<button class="btn-sm" data-act="saveQQ" style="margin-top:8px;">保存我的 QQ</button>';
-            html += '</div>';
-        }
-
         html += '<div class="info-section"><h3>成员 ' + (conv.memberCount || state.members.length) + '</h3>';
         if (!state.members.length) html += '<div class="field-hint">加入后才能看到成员名单</div>';
         state.members.filter(function (m) { return m.status === 'active'; }).forEach(function (m) {
@@ -4279,8 +4254,6 @@
         if (act === 'join') { joinCurrent(); return; }
         if (act === 'avatar') { openAvatarPicker('group'); return; }
         if (act === 'addMember') { openAddMember(); return; }
-        if (act === 'saveNotify') { await saveNotify(); return; }
-        if (act === 'saveQQ') { await saveMyQQ(); return; }
         if (act === 'invite') { await createInvite(conv); return; }
         if (act === 'pending') { await showPending(conv); return; }
         if (act === 'redistribute') {
@@ -4407,7 +4380,6 @@
             applyAvatar(r.user.avatar);
             addAvatarEntryToProfileModal();
             await initIdentity();
-            loadBots();
         } catch (e) {
             // 不在这里删 token：可能只是校验服务临时不可用，删了会把主站也一起登出
             state.me = null;
@@ -4781,32 +4753,6 @@
         }
     }
 
-    async function saveNotify() {
-        var sel = $('notifyBotSelect');
-        if (!sel || !state.active) return;
-        try {
-            await capi('/api/conversations/' + state.active.id + '/notify', { method: 'POST', body: { botId: sel.value } });
-            state.active.notifyBotId = sel.value;
-            toast(sel.value ? '已绑定通知机器人' : '已关闭 QQ 提醒');
-        } catch (e) { toast(e.message, true); }
-    }
-
-    async function saveMyQQ() {
-        var v = ($('myQQInput').value || '').trim();
-        if (!state.active) return;
-        try {
-            var r = await capi('/api/conversations/' + state.active.id + '/my-qq', { method: 'POST', body: { qq: v } });
-            state.myQQ = r.qq;
-            toast(r.qq ? '已绑定 QQ ' + r.qq : '已取消 QQ 提醒');
-        } catch (e) { toast(e.message, true); }
-    }
-
-    async function loadBots() {
-        if (!state.me) { state.bots = []; return; }
-        try { state.bots = await capi('/api/bots'); } catch (e) { state.bots = []; }
-    }
-
-    /* ------------------------------------------------------------ 个人资料里的 UID / 头像 */
     /* ------------------------------------------------------------ 新消息提醒（Web Push / QQ） */
     var swReg = null;
 
