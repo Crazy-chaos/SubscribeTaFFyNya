@@ -2460,6 +2460,89 @@
     }
 }
 
+/* ---------- 扫码加机器人 ---------- */
+.qq-add {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    margin-top: 8px;
+}
+
+.qq-add-thumb {
+    flex: none;
+    width: 96px;
+    height: 96px;
+    padding: 0;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    background: #fff;
+    overflow: hidden;
+    cursor: zoom-in;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.qq-add-thumb:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.qq-add-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.qq-add-text {
+    min-width: 0;
+    flex: 1;
+}
+
+.qq-add-title {
+    font-size: 0.82rem;
+    font-weight: 800;
+    margin-bottom: 4px;
+    color: var(--text);
+}
+
+.qq-add-uin {
+    margin-top: 7px;
+    font-size: 0.7rem;
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    word-break: break-all;
+}
+
+.qq-add-uin b {
+    color: var(--text);
+}
+
+.qq-qr-card {
+    max-width: 360px !important;
+}
+
+.qq-qr-big {
+    display: block;
+    width: 100%;
+    max-width: 280px;
+    margin: 6px auto 10px;
+    border-radius: 14px;
+    background: #fff;
+    image-rendering: -webkit-optimize-contrast;
+}
+
+/* 窄屏把二维码缩到 76px，文字仍能排两行 */
+@media (max-width: 420px) {
+    .qq-add-thumb {
+        width: 76px;
+        height: 76px;
+    }
+
+    .qq-add {
+        gap: 10px;
+    }
+}
+
     </style>
     <link rel="stylesheet" href="/assets/mobile.css">
 </head>
@@ -2774,6 +2857,21 @@
             </div>
 
             <div class="notify-block">
+                <div class="notify-head">QQ 二维码扫描添加 bot</div>
+                <div class="qq-add">
+                    <button class="qq-add-thumb" type="button" id="qqQrOpen" title="点击放大二维码">
+                        <img src="/assets/qq-bot-qr.webp" alt="机器人二维码">
+                    </button>
+                    <div class="qq-add-text">
+                        <div class="qq-add-title">扫一扫加机器人好友</div>
+                        <div class="field-hint">用手机 QQ 扫左边的码，把机器人加成好友并点通过。
+                            之后在下面填你自己的 QQ 号保存，群里有新消息它才会私聊提醒你。</div>
+                        <div class="qq-add-uin">机器人 QQ <b>3327730431</b> · 昵称「推送大王」</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notify-block">
                 <div class="notify-head">QQ 提醒 <span class="notify-state" id="qqBindState">未绑定</span></div>
                 <div class="field-hint">填一次就全站生效：群里和私聊有人发消息，机器人会用 QQ 私聊提醒你。
                     机器人会先加你好友，记得通过。</div>
@@ -2788,6 +2886,18 @@
             <div class="modal-msg" id="notifyMsg"></div>
             <div class="auth-actions">
                 <button type="button" id="notifyClose">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 机器人二维码 ===== -->
+    <div class="auth-modal chat-modal" id="qqQrModal" aria-hidden="true">
+        <div class="auth-card qq-qr-card">
+            <h2>扫码添加机器人</h2>
+            <img class="qq-qr-big" src="/assets/qq-bot-qr.webp" alt="机器人二维码">
+            <p class="field-hint" style="text-align:center;">手机 QQ「扫一扫」· QQ 3327730431</p>
+            <div class="auth-actions">
+                <button type="button" id="qqQrClose">关闭</button>
             </div>
         </div>
     </div>
@@ -5622,6 +5732,10 @@
         $('pushTest').onclick = testPush;
         $('saveGlobalQQ').onclick = saveGlobalQQ;
         $('qqTest').onclick = testQQ;
+
+        // 扫码加机器人：缩略图点开看大图，手机上对不准时很方便
+        if ($('qqQrOpen')) $('qqQrOpen').onclick = function () { openModal($('qqQrModal')); };
+        if ($('qqQrClose')) $('qqQrClose').onclick = function () { closeModal($('qqQrModal')); };
 
         var meCard = document.querySelector('.chat-me');
         if (meCard) {
