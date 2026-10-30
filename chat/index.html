@@ -4339,7 +4339,11 @@
         $('dmSearch').oninput = function () {
             clearTimeout(timer);
             var kw = $('dmSearch').value.trim();
-            if (kw.length < 2) { $('dmResults').innerHTML = '<div class="field-hint">输入 UID（如 10001）或邮箱 / 昵称</div>'; return; }
+            if (!kw) { $('dmResults').innerHTML = ''; return; }
+            if (kw.length < 2 && !/^\d+$/.test(kw)) {
+                $('dmResults').innerHTML = '<div class="field-hint">输入 UID 或邮箱 / 昵称</div>';
+                return;
+            }
             timer = setTimeout(async function () {
                 try {
                     var rows = await capi('/api/users/search?q=' + encodeURIComponent(kw));
