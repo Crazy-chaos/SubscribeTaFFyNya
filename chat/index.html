@@ -1964,6 +1964,181 @@
     }
 }
 
+/* ---------- 头像库 / 群资料增强 ---------- */
+.info-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.info-avatar {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #fff;
+    overflow: hidden;
+    border: 1px solid var(--glass-border);
+}
+
+.info-avatar img,
+.conv-avatar img,
+.msg-avatar img,
+.chat-head-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.info-uid {
+    font-size: 0.7rem;
+    color: var(--muted);
+}
+
+.chat-head-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+    flex: none;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: #fff;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.24);
+}
+
+.avatar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 8px;
+    margin: 12px 0;
+    max-height: 232px;
+    overflow-y: auto;
+}
+
+.avatar-pick {
+    border: 2px solid transparent;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    padding: 3px;
+    cursor: pointer;
+    aspect-ratio: 1;
+    overflow: hidden;
+    transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.avatar-pick:hover {
+    transform: translateY(-2px);
+}
+
+.avatar-pick.active {
+    border-color: var(--pink);
+}
+
+.avatar-pick img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 10px;
+    display: block;
+}
+
+.avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0 4px;
+}
+
+.avatar-row img {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.member-name {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.member-uid {
+    font-size: 0.64rem;
+    color: var(--muted);
+}
+
+.info-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    margin: 10px 0 5px;
+    color: var(--text);
+}
+
+.chat-select,
+.chat-input {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 10px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    outline: none;
+}
+
+.chat-select option {
+    color: #333;
+}
+
+.uid-chip {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem;
+    padding: 2px 7px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.22);
+    border: 1px solid var(--glass-border);
+    white-space: nowrap;
+}
+
+.result-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 6px;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.result-row:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.result-row .r-name {
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.result-row .r-sub {
+    font-size: 0.68rem;
+    color: var(--muted);
+}
+
     </style>
 </head>
 <body>
@@ -2149,6 +2324,7 @@
             <section class="chat-panel chat-main" id="chatMain">
                 <header class="chat-main-head">
                     <button class="chat-back" id="chatBack" type="button" aria-label="返回列表">‹</button>
+                    <div class="chat-head-avatar" id="chatHeadAvatar">💬</div>
                     <div class="chat-title-wrap">
                         <h2 id="chatTitle">聊天组</h2>
                         <div class="chat-sub" id="chatSub">找个人聊聊，或者开个群</div>
@@ -2270,6 +2446,37 @@
                 <button type="button" id="keyClose">关闭</button>
             </div>
             <div class="modal-msg" id="keyMsg"></div>
+        </div>
+    </div>
+
+    <!-- ===== 头像库 ===== -->
+    <div class="auth-modal chat-modal" id="avatarModal" aria-hidden="true">
+        <div class="auth-card">
+            <h2 id="avatarTitle">选择头像</h2>
+            <p class="field-hint" id="avatarHint">从站点头像库里挑一个，站内共用同一套库；也可以填一个 https 图片地址。</p>
+            <div class="avatar-grid" id="avatarGrid"></div>
+            <label for="avatarUrl">自定义图片地址</label>
+            <input id="avatarUrl" type="text" placeholder="https://example.com/avatar.png">
+            <div class="auth-actions">
+                <button type="button" id="avatarCancel">取消</button>
+                <button type="button" id="avatarSave">保存</button>
+            </div>
+            <div class="modal-msg" id="avatarMsg"></div>
+        </div>
+    </div>
+
+    <!-- ===== 群内加人 ===== -->
+    <div class="auth-modal chat-modal" id="addMemberModal" aria-hidden="true">
+        <div class="auth-card">
+            <h2>添加成员</h2>
+            <label for="amSearch">UID 或邮箱 / 昵称</label>
+            <input id="amSearch" type="text" placeholder="例如 10001 或 taffy@crazychaos.top" autocomplete="off">
+            <div id="amResults" style="margin-top:10px;max-height:260px;overflow-y:auto;"></div>
+            <p class="field-hint">加进端到端加密群后，请回到群资料点一次「分发群密钥」，否则对方读不到历史消息。</p>
+            <div class="auth-actions">
+                <button type="button" id="amCancel">关闭</button>
+            </div>
+            <div class="modal-msg" id="amMsg"></div>
         </div>
     </div>
 
@@ -2747,7 +2954,7 @@
                     return avatarPath;
                 }
                 const path = window.location.pathname;
-                if (path.includes('/blog/') || path.includes('/tools/')) {
+                if (path.includes('/blog/') || path.includes('/tools/') || path.includes('/chat/')) {
                     return '../' + avatarPath;
                 }
                 return avatarPath;
@@ -2999,6 +3206,10 @@
         pubCache: new Map(),
         es: null,
         reportTarget: null,
+        bots: [],
+        myQQ: '',
+        avatarTarget: 'user',
+        avatarPick: '',
         keyModalMode: null
     };
 
@@ -3378,6 +3589,42 @@
         return { ch: ch, bg: 'linear-gradient(135deg, hsl(' + hue + ',72%,68%), hsl(' + ((hue + 48) % 360) + ',68%,62%))' };
     }
 
+    var AVATARS = (function () {
+        var webp = [1, 2, 3, 7, 8, 10, 11, 12, 13, 14, 15, 16, 21];
+        var avif = [4, 5, 6, 9, 17, 18, 19, 20, 22, 23, 24];
+        var all = [];
+        webp.forEach(function (i) { all.push({ n: i, src: '/123/emoji_' + i + '.webp' }); });
+        avif.forEach(function (i) { all.push({ n: i, src: '/123/emoji_' + i + '.avif' }); });
+        all.sort(function (a, b) { return a.n - b.n; });
+        return all.map(function (x) { return x.src; });
+    })();
+
+    function avatarSrc(v) {
+        var s2 = (typeof v === 'string' ? v : (v && v.avatar)) || '';
+        if (!s2) return '';
+        if (s2.indexOf('http://') === 0 || s2.indexOf('https://') === 0) return s2;
+        s2 = s2.replace(/^(\.\.\/)+/, '').replace(/^\.\//, '');
+        return s2.charAt(0) === '/' ? s2 : '/' + s2;
+    }
+
+    function avatarHTML(src, name, seed, cls) {
+        var url = avatarSrc(src);
+        var av = avatarOf(name || '', seed || name || '');
+        if (url) return '<div class="' + cls + '"><img src="' + esc(url) + '" alt="" referrerpolicy="no-referrer"></div>';
+        return '<div class="' + cls + '" style="background:' + av.bg + '">' + esc(av.ch) + '</div>';
+    }
+
+    function applyAvatar(src) {
+        var url = avatarSrc(src);
+        ['chatMeAvatar', 'userPillAvatar', 'headerProfileAvatar', 'modalAvatarImg'].forEach(function (id) {
+            var el = $(id);
+            if (el && url) el.src = url;
+        });
+        var pill = document.querySelector('#userPill .auth-avatar');
+        if (pill && url) pill.src = url;
+        document.querySelectorAll('#profileModal .auth-avatar').forEach(function (el) { if (url) el.src = url; });
+    }
+
     function timeLabel(ts) {
         if (!ts) return '';
         var d = new Date(ts);
@@ -3418,8 +3665,10 @@
             if (c.visibility === 'private') badges += '<span class="tag-lock">私密</span>';
             if (c.myStatus === 'pending') badges += '<span class="tag-lock">待审批</span>';
             var preview = c.lastMessage ? (c.lastMessage.preview || '') : '还没有消息';
+            var cAvatar = c.type === 'dm' && c.peer ? (c.peer.avatar || '') : (c.avatar || '');
+            var cSeed = c.type === 'dm' && c.peer ? c.peer.id : c.id;
             return '<div class="conv-item' + (c.id === state.activeId ? ' active' : '') + '" data-id="' + esc(c.id) + '">' +
-                '<div class="conv-avatar" style="background:' + av.bg + '">' + esc(av.ch) + '</div>' +
+                avatarHTML(cAvatar, c.name, cSeed, 'conv-avatar') +
                 '<div class="conv-body"><div class="conv-name">' + esc(c.name) + badges + '</div>' +
                 '<div class="conv-preview">' + esc(preview) + '</div></div>' +
                 '<div class="conv-meta"><span class="conv-time">' + esc(timeLabel(c.lastMessage && c.lastMessage.createdAt)) + '</span>' +
@@ -3444,7 +3693,7 @@
             var tags = (priv ? '<span class="tag-lock">私密</span>' : '') +
                 (c.encMode === 'e2ee' ? '<span class="tag-lock">🔒</span>' : '');
             return '<div class="conv-item" data-id="' + esc(c.id) + '">' +
-                '<div class="conv-avatar" style="background:' + av.bg + '">' + esc(av.ch) + '</div>' +
+                avatarHTML(c.avatar, c.name, c.id, 'conv-avatar') +
                 '<div class="conv-body"><div class="conv-name">' + esc(c.name) + tags + '</div>' +
                 '<div class="conv-preview">' + esc(meta) + '</div></div>' +
                 '<div class="conv-meta">' + (mine ? '<span class="tag-lock">已加入</span>' : '<span class="tag-lock">进入</span>') + '</div>' +
@@ -3500,7 +3749,7 @@
             var mine = state.me && m.senderId === state.me.id;
             var av = avatarOf(m.senderName, m.senderId);
             html += '<div class="msg-row' + (mine ? ' mine' : '') + '" data-mid="' + m.id + '">' +
-                '<div class="msg-avatar" style="background:' + av.bg + '">' + esc(av.ch) + '</div>' +
+                avatarHTML(m.senderAvatar, m.senderName, m.senderId, 'msg-avatar') +
                 '<div class="msg-stack">' +
                 '<div class="msg-head"><span class="msg-sender">' + esc(m.senderName) + '</span>' +
                 '<span>' + esc(timeLabel(m.createdAt)) + '</span></div>' +
@@ -3517,11 +3766,19 @@
         var titleEl = $('chatTitle');
         var subEl = $('chatSub');
         var badgesEl = $('chatBadges');
+        var headAv = $('chatHeadAvatar');
         if (!conv) {
             titleEl.textContent = '聊天组';
             subEl.textContent = '找个人聊聊，或者开个群';
             badgesEl.innerHTML = '';
+            if (headAv) { headAv.style.background = 'rgba(255,255,255,.24)'; headAv.textContent = '💬'; }
             return;
+        }
+        if (headAv) {
+            var hsrc = avatarSrc(conv.type === 'dm' && conv.peer ? conv.peer.avatar : conv.avatar);
+            var hav = avatarOf(conv.name || '聊天组', conv.id);
+            headAv.style.background = hsrc ? 'transparent' : hav.bg;
+            headAv.innerHTML = hsrc ? '<img src="' + esc(hsrc) + '" alt="">' : esc(hav.ch);
         }
         titleEl.textContent = conv.name || (conv.type === 'dm' ? '私聊' : '未命名群组');
         var sub = [];
@@ -3590,6 +3847,10 @@
             state.active = info.conversation;
             state.members = info.members || [];
             state.pubCache.clear();
+            state.myQQ = '';
+            if (state.me && state.active.type === 'group' && state.active.myStatus === 'active') {
+                try { state.myQQ = (await capi('/api/conversations/' + id + '/my-qq')).qq || ''; } catch (e) { state.myQQ = ''; }
+            }
             renderHeader();
             renderComposer();
             renderInfo();
@@ -3673,15 +3934,25 @@
         if (!conv) { box.innerHTML = '<div class="side-empty">选一个会话查看详情</div>'; return; }
         var isOwner = conv.myRole === 'owner';
         var isAdminRole = conv.myRole === 'admin' || isOwner || state.isAdmin;
+        var av = avatarOf(conv.name || '私聊', conv.id);
+        var convAvatar = conv.avatar ? '<img src="' + esc(avatarSrc(conv.avatar)) + '" alt="">' : esc(av.ch);
         var html = '';
 
-        html += '<div class="info-section"><h3>群组</h3>' +
+        html += '<div class="info-section">' +
+            '<div class="info-head">' +
+            '<div class="info-avatar" style="background:' + (conv.avatar ? 'transparent' : av.bg) + '">' + convAvatar + '</div>' +
+            '<div style="min-width:0;flex:1;">' +
             '<div class="info-name">' + esc(conv.name || '私聊') + '</div>' +
-            '<div class="info-desc">' + esc(conv.description || '这个人很懒，什么也没写') + '</div>' +
+            '<div class="info-uid">' + (conv.type === 'dm' && conv.peer
+                ? 'UID ' + esc(String(conv.peer.uid || '-'))
+                : esc(conv.memberCount) + ' 位成员') + '</div>' +
+            '</div>' +
+            (isOwner && conv.type === 'group' ? '<button class="btn-sm" data-act="avatar">换头像</button>' : '') +
+            '</div>' +
+            '<div class="info-desc">' + esc(conv.description || (conv.type === 'dm' ? '私聊' : '还没有简介')) + '</div>' +
             kv('可见性', conv.visibility === 'public' ? '公开' : '私密') +
             kv('加入方式', { open: '自由加入', approval: '需要审批', invite: '邀请码' }[conv.joinMode] || '-') +
             kv('消息加密', conv.encMode === 'e2ee' ? '端到端加密' : '明文（服务端可读）') +
-            kv('成员', conv.memberCount + ' 人') +
             '</div>';
 
         if (conv.type === 'group') {
@@ -3691,22 +3962,43 @@
                     (conv.joinMode === 'invite' ? '输入邀请码加入' : '加入群组') + '</button>';
             }
             if (isAdminRole) {
+                html += '<button class="btn-sm" data-act="addMember">添加成员</button>';
                 html += '<button class="btn-sm" data-act="invite">生成邀请码</button>';
                 if (conv.pendingCount) html += '<button class="btn-sm" data-act="pending">待审批 ' + conv.pendingCount + '</button>';
             }
             if (conv.encMode === 'e2ee' && isAdminRole) html += '<button class="btn-sm" data-act="redistribute">分发群密钥</button>';
             if (isOwner) html += '<button class="btn-sm danger" data-act="archive">解散群组</button>';
-            else if (conv.myStatus === 'active' && conv.type === 'group') html += '<button class="btn-sm" data-act="leave">退出群组</button>';
+            else if (conv.myStatus === 'active') html += '<button class="btn-sm" data-act="leave">退出群组</button>';
             html += '</div><div id="infoInviteBox" style="margin-top:10px;"></div></div>';
+        }
+
+        if (conv.type === 'group' && conv.myStatus === 'active') {
+            html += '<div class="info-section"><h3>QQ 提醒</h3>';
+            if (isOwner) {
+                html += '<div class="field-hint">选一个机器人。群里有新消息时，它会私聊提醒在下面绑定了 QQ 的成员' +
+                    (conv.encMode === 'e2ee' ? '；加密群只提醒“有新消息”，不出正文' : '') + '。</div>';
+                html += '<select id="notifyBotSelect" class="chat-select"><option value="">不启用</option>' +
+                    state.bots.map(function (b) {
+                        return '<option value="' + esc(b.id) + '"' + (b.id === conv.notifyBotId ? ' selected' : '') + '>' +
+                            esc(b.name) + '</option>';
+                    }).join('') + '</select>';
+                html += '<button class="btn-sm primary" data-act="saveNotify" style="margin-top:8px;">保存机器人</button>';
+            } else {
+                html += '<div class="field-hint">通知机器人由群主设置。</div>';
+            }
+            html += '<label class="info-label" for="myQQInput">我的 QQ 号（接收新消息提醒）</label>' +
+                '<input id="myQQInput" class="chat-input" type="text" inputmode="numeric" placeholder="不填则收不到提醒" value="' + esc(state.myQQ || '') + '">' +
+                '<button class="btn-sm" data-act="saveQQ" style="margin-top:8px;">保存我的 QQ</button>';
+            html += '</div>';
         }
 
         html += '<div class="info-section"><h3>成员 ' + (conv.memberCount || state.members.length) + '</h3>';
         if (!state.members.length) html += '<div class="field-hint">加入后才能看到成员名单</div>';
         state.members.filter(function (m) { return m.status === 'active'; }).forEach(function (m) {
             var roleTxt = m.role === 'owner' ? '群主' : (m.role === 'admin' ? '管理' : '');
-            html += '<div class="member-row"><div class="msg-avatar" style="background:' + avatarOf(m.nickname, m.id).bg + '">' +
-                esc(avatarOf(m.nickname, m.id).ch) + '</div>' +
-                '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(m.nickname) + (m.id === identity.id ? '（我）' : '') + '</span>' +
+            html += '<div class="member-row">' + avatarHTML(m.avatar, m.nickname, m.id, 'msg-avatar') +
+                '<span class="member-name">' + esc(m.nickname) + (m.id === identity.id ? '（我）' : '') +
+                '<span class="member-uid">UID ' + esc(String(m.uid || '-')) + '</span></span>' +
                 (roleTxt ? '<span class="m-role">' + roleTxt + '</span>' : '') +
                 (isAdminRole && m.role !== 'owner' && m.id !== identity.id ? '<button class="btn-sm" data-kick="' + esc(m.id) + '" style="padding:2px 7px;">移出</button>' : '') +
                 '</div>';
@@ -3736,6 +4028,10 @@
         var conv = state.active;
         if (!conv) return;
         if (act === 'join') { joinCurrent(); return; }
+        if (act === 'avatar') { openAvatarPicker('group'); return; }
+        if (act === 'addMember') { openAddMember(); return; }
+        if (act === 'saveNotify') { await saveNotify(); return; }
+        if (act === 'saveQQ') { await saveMyQQ(); return; }
         if (act === 'invite') { await createInvite(conv); return; }
         if (act === 'pending') { await showPending(conv); return; }
         if (act === 'redistribute') {
@@ -3856,10 +4152,12 @@
             state.isAdmin = r.isAdmin;
             state.hasKey = r.hasKey;
             $('chatMeName').textContent = r.user.nickname || r.user.id.split('@')[0];
-            $('chatMeSub').textContent = r.isAdmin ? '管理员' : '已登录';
-            var adminBtn = $('adminOpenBtn');
-            if (adminBtn) adminBtn.style.display = r.isAdmin ? 'inline-flex' : 'none';
+            $('chatMeSub').textContent = 'UID ' + (r.user.uid || '-') + (r.isAdmin ? ' · 管理员' : '');
+            applyAvatar(r.user.avatar);
+            renderProfileUid(r.user);
+            addAvatarEntryToProfileModal();
             await initIdentity();
+            loadBots();
         } catch (e) {
             // 不在这里删 token：可能只是校验服务临时不可用，删了会把主站也一起登出
             state.me = null;
@@ -4041,15 +4339,16 @@
         $('dmSearch').oninput = function () {
             clearTimeout(timer);
             var kw = $('dmSearch').value.trim();
-            if (kw.length < 2) { $('dmResults').innerHTML = ''; return; }
+            if (kw.length < 2) { $('dmResults').innerHTML = '<div class="field-hint">输入 UID（如 10001）或邮箱 / 昵称</div>'; return; }
             timer = setTimeout(async function () {
                 try {
                     var rows = await capi('/api/users/search?q=' + encodeURIComponent(kw));
                     $('dmResults').innerHTML = rows.length ? rows.map(function (u) {
-                        return '<div class="member-row" data-dm="' + esc(u.id) + '" style="cursor:pointer;">' +
-                            '<div class="msg-avatar" style="background:' + avatarOf(u.nickname, u.id).bg + '">' + esc(avatarOf(u.nickname, u.id).ch) + '</div>' +
-                            '<span>' + esc(u.nickname) + ' <span class="muted" style="opacity:.7;font-size:.72rem;">' + esc(u.id) + '</span></span></div>';
-                    }).join('') : '<div class="field-hint">没找到这个人，对方需要先在聊天组登录过一次。</div>';
+                        return '<div class="result-row" data-dm="' + esc(u.id) + '">' +
+                            avatarHTML(u.avatar, u.nickname, u.id, 'msg-avatar') +
+                            '<div style="flex:1;min-width:0;"><div class="r-name">' + esc(u.nickname) + '</div>' +
+                            '<div class="r-sub">UID ' + esc(String(u.uid || '-')) + ' · ' + esc(u.id) + '</div></div></div>';
+                    }).join('') : '<div class="field-hint">没找到这个人。可以试试对方的 UID 或完整邮箱。</div>';
                     $('dmResults').querySelectorAll('[data-dm]').forEach(function (row) {
                         row.onclick = function () { startDM(row.getAttribute('data-dm')); };
                     });
@@ -4123,6 +4422,179 @@
             };
             $('keyViewCode').onclick = function () { showRecoverPrompt(); };
         };
+    }
+
+    /* ------------------------------------------------------------ 头像 / 加人 / 通知 */
+    function setAvatarMsg(msg, isErr) {
+        var el = $('avatarMsg');
+        if (!el) return;
+        el.textContent = msg || '';
+        el.className = 'modal-msg' + (isErr ? ' error' : '');
+    }
+
+    function openAvatarPicker(kind) {
+        if (kind === 'group' && !state.active) return;
+        state.avatarTarget = kind;
+        var current = kind === 'group' ? ((state.active && state.active.avatar) || '') : ((state.me && state.me.avatar) || '');
+        state.avatarPick = AVATARS.indexOf(current) >= 0 ? current : '';
+        $('avatarTitle').textContent = kind === 'group' ? '群头像' : '我的头像';
+        $('avatarHint').textContent = kind === 'group'
+            ? '群头像和站点头像库共用一套；也可以填 https 图片地址。'
+            : '挑一个头像，所有设备都会同步；也可以填 https 图片地址。';
+        $('avatarGrid').innerHTML = AVATARS.map(function (src) {
+            return '<button type="button" class="avatar-pick' + (src === current ? ' active' : '') +
+                '" data-src="' + esc(src) + '"><img src="' + esc(src) + '" alt=""></button>';
+        }).join('');
+        $('avatarUrl').value = /^https?:\/\//.test(current) ? current : '';
+        setAvatarMsg('');
+        openModal($('avatarModal'));
+        $('avatarGrid').querySelectorAll('[data-src]').forEach(function (b) {
+            b.onclick = function () {
+                state.avatarPick = b.getAttribute('data-src');
+                $('avatarUrl').value = '';
+                $('avatarGrid').querySelectorAll('.avatar-pick').forEach(function (x) { x.classList.remove('active'); });
+                b.classList.add('active');
+            };
+        });
+    }
+
+    async function saveAvatar() {
+        var url = ($('avatarUrl').value || '').trim();
+        if (url && url.indexOf('https://') !== 0) return setAvatarMsg('自定义头像必须是 https 地址', true);
+        var val = url || state.avatarPick || '';
+        try {
+            if (state.avatarTarget === 'group') {
+                await capi('/api/conversations/' + state.active.id, { method: 'PATCH', body: { avatar: val } });
+                closeModal($('avatarModal'));
+                toast('群头像已更新');
+                await openConversation(state.active.id);
+                loadConversations();
+            } else {
+                var r = await capi('/api/me/avatar', { method: 'POST', body: { avatar: val } });
+                state.me.avatar = r.avatar;
+                applyAvatar(r.avatar);
+                closeModal($('avatarModal'));
+                toast('头像已更新');
+                loadConversations();
+                renderConvList();
+            }
+        } catch (e) {
+            setAvatarMsg(e.message, true);
+        }
+    }
+
+    function openAddMember() {
+        if (!state.me) return openLogin('登录后才能添加成员');
+        if (!state.active || state.active.type !== 'group') return;
+        $('amSearch').value = '';
+        $('amResults').innerHTML = '<div class="field-hint">输入 UID 或邮箱搜索</div>';
+        $('amMsg').textContent = '';
+        openModal($('addMemberModal'));
+        $('amSearch').focus();
+    }
+
+    function renderMemberResults(rows) {
+        var box = $('amResults');
+        if (!rows.length) {
+            box.innerHTML = '<div class="field-hint">没找到人。对方需要先在聊天组登录过一次。</div>';
+            return;
+        }
+        box.innerHTML = rows.map(function (u) {
+            return '<div class="result-row" data-add="' + esc(u.id) + '">' +
+                avatarHTML(u.avatar, u.nickname, u.id, 'msg-avatar') +
+                '<div style="flex:1;min-width:0;"><div class="r-name">' + esc(u.nickname) + '</div>' +
+                '<div class="r-sub">UID ' + esc(String(u.uid || '-')) + ' · ' + esc(u.id) + '</div></div>' +
+                '<button class="btn-sm primary" type="button">添加</button></div>';
+        }).join('');
+        box.querySelectorAll('[data-add]').forEach(function (row) {
+            row.onclick = function () { addMember(row.getAttribute('data-add')); };
+        });
+    }
+
+    async function addMember(userId) {
+        try {
+            var r = await capi('/api/conversations/' + state.active.id + '/members', { method: 'POST', body: { userId: userId } });
+            $('amMsg').textContent = '已添加 ' + (r.nickname || userId);
+            var convId = state.active.id;
+            await openConversation(convId);
+            loadConversations();
+            if (r.needKeys) {
+                var gk = state.gkCache.get(convId);
+                if (gk) await distributeKeys(state.active, gk);
+            }
+        } catch (e) {
+            $('amMsg').textContent = e.message;
+        }
+    }
+
+    async function saveNotify() {
+        var sel = $('notifyBotSelect');
+        if (!sel || !state.active) return;
+        try {
+            await capi('/api/conversations/' + state.active.id + '/notify', { method: 'POST', body: { botId: sel.value } });
+            state.active.notifyBotId = sel.value;
+            toast(sel.value ? '已绑定通知机器人' : '已关闭 QQ 提醒');
+        } catch (e) { toast(e.message, true); }
+    }
+
+    async function saveMyQQ() {
+        var v = ($('myQQInput').value || '').trim();
+        if (!state.active) return;
+        try {
+            var r = await capi('/api/conversations/' + state.active.id + '/my-qq', { method: 'POST', body: { qq: v } });
+            state.myQQ = r.qq;
+            toast(r.qq ? '已绑定 QQ ' + r.qq : '已取消 QQ 提醒');
+        } catch (e) { toast(e.message, true); }
+    }
+
+    async function loadBots() {
+        if (!state.me) { state.bots = []; return; }
+        try { state.bots = await capi('/api/bots'); } catch (e) { state.bots = []; }
+    }
+
+    /* ------------------------------------------------------------ 个人资料里的 UID / 头像 */
+    function renderProfileUid(user) {
+        var nameEl = document.querySelector('#profilePopover .profile-card-name') || document.querySelector('.profile-card-name');
+        if (!nameEl || !user) return;
+        var el = $('profileCardUid');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'profileCardUid';
+            el.style.cssText = 'font-size:.72rem;opacity:.85;margin-top:3px;font-family:ui-monospace,Menlo,monospace;';
+            nameEl.parentNode.insertBefore(el, nameEl.nextSibling);
+        }
+        el.textContent = 'UID ' + (user.uid || '-') + ' · ' + user.id;
+    }
+
+    function addAvatarEntryToProfileModal() {
+        var card = document.querySelector('#profileModal .auth-card');
+        if (!card || $('profileAvatarRow')) return;
+        var row = document.createElement('div');
+        row.className = 'avatar-row';
+        row.id = 'profileAvatarRow';
+        row.innerHTML = '<img id="modalAvatarImg" src="/123/emoji_23.avif" alt="头像">' +
+            '<button type="button" class="btn-sm primary" id="modalAvatarBtn">修改头像</button>';
+        var anchor = card.querySelector('label');
+        card.insertBefore(row, anchor || card.firstChild);
+        row.querySelector('#modalAvatarBtn').onclick = function () {
+            closeModal($('profileModal'));
+            setTimeout(function () { openAvatarPicker('user'); }, 220);
+        };
+    }
+
+    // 站点配置里的头像可能是相对路径，在 /chat/ 下会解析错，这里补成根路径
+    function wrapProfileRenderer() {
+        if (typeof window.renderProfile !== 'function' || window.__avatarWrapped) return;
+        var orig = window.renderProfile;
+        window.renderProfile = function (data) {
+            orig(data);
+            var img = $('profileCardAvatar');
+            if (img) {
+                var fixed = avatarSrc(img.getAttribute('src'));
+                if (fixed && fixed !== img.getAttribute('src')) img.src = fixed;
+            }
+        };
+        window.__avatarWrapped = true;
     }
 
     /* ------------------------------------------------------------ 管理后台 */
@@ -4362,6 +4834,35 @@
             input.style.height = Math.min(input.scrollHeight, 120) + 'px';
         });
 
+        $('avatarCancel').onclick = function () { closeModal($('avatarModal')); };
+        $('avatarSave').onclick = saveAvatar;
+        $('amCancel').onclick = function () { closeModal($('addMemberModal')); };
+
+        var meAv = $('chatMeAvatar');
+        if (meAv) {
+            meAv.style.cursor = 'pointer';
+            meAv.title = '修改我的头像';
+            meAv.onclick = function () {
+                if (!state.me) return openLogin('登录后才能设置头像');
+                openAvatarPicker('user');
+            };
+        }
+
+        var amTimer = null;
+        $('amSearch').oninput = function () {
+            clearTimeout(amTimer);
+            var kw = ($('amSearch').value || '').trim();
+            if (!kw) { $('amResults').innerHTML = '<div class="field-hint">输入 UID 或邮箱搜索</div>'; return; }
+            amTimer = setTimeout(async function () {
+                try {
+                    var rows = await capi('/api/users/search?q=' + encodeURIComponent(kw));
+                    renderMemberResults(rows);
+                } catch (e) {
+                    $('amResults').innerHTML = '<div class="field-hint">' + esc(e.message) + '</div>';
+                }
+            }, 320);
+        };
+
         var adminBtn = $('adminOpenBtn');
         if (adminBtn) adminBtn.onclick = function () { openAdmin(); };
         var dmBtn = $('dmOpenBtn');
@@ -4425,6 +4926,7 @@
 
     /* ------------------------------------------------------------ 启动 */
     async function boot() {
+        wrapProfileRenderer();
         wireBase();
         wireCreateGroup();
         wireJoinCode();
