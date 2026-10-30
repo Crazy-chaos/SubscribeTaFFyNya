@@ -4094,7 +4094,18 @@
         return '💬';
     }
 
+    /* 收不到系统通知时，至少让切到别的标签页也能看见有新消息 */
+    function updateTitleUnread() {
+        var total = (state.convs || []).reduce(function (n2, c) {
+            return n2 + (Number(c.unread) || 0);
+        }, 0);
+        document.title = total > 0
+            ? '(' + (total > 99 ? '99+' : total) + ') 聊天组'
+            : '聊天组';
+    }
+
     function renderConvList() {
+        updateTitleUnread();
         var list = $('convList');
         var kw = ($('convSearch').value || '').trim().toLowerCase();
         var rows = state.convs.filter(function (c) {
@@ -5177,6 +5188,24 @@
         }
     }
 
+    /* 浏览器订阅推送时连的是厂商的推送服务器：
+       Chrome → Google FCM（国内基本连不上），Edge → WNS，Safari → APNs。
+       所以 "push service error" 是网络侧的，不是站点的问题。 */
+    function pushErrorHint(e) {
+        var msg = String((e && e.message) || e || '');
+        if (/push service|Registration failed/i.test(msg)) {
+            return '这个浏览器连不上推送服务。Chrome 走的是 Google 通道，国内通常被挡；'
+                + '可以换成 Edge 试试，或者不开通知——标签页标题会显示未读数。';
+        }
+        if (/denied|permission/i.test(msg)) {
+            return '通知权限被拒绝了，点地址栏左边的小锁可以改回来。';
+        }
+        if (/not supported|ServiceWorker|PushManager/i.test(msg)) {
+            return '这个浏览器不支持系统通知；iOS 需要先「添加到主屏幕」再打开。';
+        }
+        return msg || '开启失败，稍后再试';
+    }
+
     async function enablePush() {
         try {
             setNotifyMsg('正在申请通知权限…');
@@ -5209,7 +5238,7 @@
             setNotifyMsg('已开启，可以点「发条测试」验证一下');
         } catch (e) {
             setPushState('未开启', 'off');
-            setNotifyMsg(e.message, true);
+            setNotifyMsg(pushErrorHint(e), true);
         }
     }
 
