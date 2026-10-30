@@ -2457,6 +2457,8 @@
             <div class="avatar-grid" id="avatarGrid"></div>
             <label for="avatarUrl">自定义图片地址</label>
             <input id="avatarUrl" type="text" placeholder="https://example.com/avatar.png">
+            <label for="avatarFile">或者直接上传一张（png / jpg / webp / gif，≤2MB）</label>
+            <input id="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
             <div class="auth-actions">
                 <button type="button" id="avatarCancel">取消</button>
                 <button type="button" id="avatarSave">保存</button>
@@ -3603,6 +3605,7 @@
         var s2 = (typeof v === 'string' ? v : (v && v.avatar)) || '';
         if (!s2) return '';
         if (s2.indexOf('http://') === 0 || s2.indexOf('https://') === 0) return s2;
+        if (s2.indexOf('/api/avatar/') === 0) return CHAT_API + s2;
         s2 = s2.replace(/^(\.\.\/)+/, '').replace(/^\.\//, '');
         return s2.charAt(0) === '/' ? s2 : '/' + s2;
     }
@@ -4153,6 +4156,8 @@
             state.hasKey = r.hasKey;
             $('chatMeName').textContent = r.user.nickname || r.user.id.split('@')[0];
             $('chatMeSub').textContent = 'UID ' + (r.user.uid || '-') + (r.isAdmin ? ' · 管理员' : '');
+            var adminBtn = $('adminOpenBtn');
+            if (adminBtn) adminBtn.style.display = r.isAdmin ? 'inline-flex' : 'none';
             applyAvatar(r.user.avatar);
             renderProfileUid(r.user);
             addAvatarEntryToProfileModal();
@@ -4840,6 +4845,31 @@
 
         $('avatarCancel').onclick = function () { closeModal($('avatarModal')); };
         $('avatarSave').onclick = saveAvatar;
+        $('avatarFile').onchange = async function () {
+            var file = this.files && this.files[0];
+            this.value = '';
+            if (!file) return;
+            if (file.size > 2 * 1024 * 1024) return setAvatarMsg('图片请控制在 2MB 以内', true);
+            setAvatarMsg('上传中…');
+            try {
+                var res = await fetch(CHAT_API + '/api/me/avatar/upload', {
+                    method: 'POST',
+                    headers: {
+                        Authorization: localStorage.getItem('token') || '',
+                        'Content-Type': file.type || 'image/png'
+                    },
+                    body: file
+                });
+                var data = await res.json();
+                if (!res.ok || Number(data.code) !== 200) throw new Error((data && data.message) || '上传失败');
+                state.avatarPick = data.data.avatar;
+                $('avatarUrl').value = '';
+                setAvatarMsg('上传完成，正在应用…');
+                await saveAvatar();
+            } catch (e) {
+                setAvatarMsg(e.message, true);
+            }
+        };
         $('amCancel').onclick = function () { closeModal($('addMemberModal')); };
 
         var meAv = $('chatMeAvatar');
