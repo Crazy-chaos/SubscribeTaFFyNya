@@ -2263,6 +2263,129 @@
     }
 }
 
+/* ---------- 离线优先：同步条与骨架屏 ---------- */
+.sync-bar {
+    flex: none;
+    height: 2px;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+
+.sync-bar.on {
+    opacity: 1;
+}
+
+.sync-bar span {
+    display: block;
+    height: 2px;
+    width: 36%;
+    border-radius: 2px;
+    background: var(--pink);
+    animation: syncSlide 1.05s ease-in-out infinite;
+}
+
+@keyframes syncSlide {
+    0% {
+        transform: translateX(-120%);
+    }
+
+    100% {
+        transform: translateX(320%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sync-bar span {
+        animation: none;
+        width: 100%;
+        opacity: 0.55;
+    }
+}
+
+.msg-skeleton {
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.sk-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    animation: skPulse 1.4s ease-in-out infinite;
+}
+
+.sk-row:nth-child(2) {
+    animation-delay: 0.12s;
+}
+
+.sk-row:nth-child(3) {
+    animation-delay: 0.24s;
+}
+
+.sk-row:nth-child(4) {
+    animation-delay: 0.36s;
+}
+
+.sk-av {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    flex: none;
+    background: rgba(255, 255, 255, 0.28);
+}
+
+.sk-lines {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding-top: 4px;
+}
+
+.sk-line {
+    height: 11px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.24);
+}
+
+.sk-line.w28 {
+    width: 28%;
+}
+
+.sk-line.w42 {
+    width: 42%;
+}
+
+.sk-line.w68 {
+    width: 68%;
+}
+
+.sk-line.w55 {
+    width: 55%;
+}
+
+@keyframes skPulse {
+
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sk-row {
+        animation: none;
+        opacity: 0.7;
+    }
+}
+
     </style>
     <link rel="stylesheet" href="/assets/mobile.css">
 </head>
@@ -2463,6 +2586,7 @@
                     <button id="guestLoginBtn" type="button">登录后发言</button>
                 </div>
 
+                <div class="sync-bar" id="syncBar" aria-hidden="true"><span></span></div>
                 <div class="chat-msgs" id="chatMsgs">
                     <div class="chat-empty" id="chatEmpty">
                         <div style="font-size:1.6rem;margin-bottom:6px;">💬</div>
@@ -3356,6 +3480,101 @@
         keyModalMode: null
     };
 
+    /* ------------------------------------------------------------ 本地缓存（离线优先） */
+    /* 点开会话先画本机存的历史，网络请求在后台跑。
+       只缓存文本消息与元数据；图片仍按需从服务器取（不占本地空间）。 */
+    var CACHE_VER = 'v1';
+    var CACHE_MAX_CONVS = 30;
+    var CACHE_MAX_MSGS = 40;
+
+    function cachePrefix() {
+        return 'chatcache:' + CACHE_VER + ':' + (state.me ? state.me.id : 'guest') + ':';
+    }
+
+    function cacheGet(name) {
+        try {
+            var raw = localStorage.getItem(cachePrefix() + name);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+
+    function cacheSet(name, value) {
+        try {
+            localStorage.setItem(cachePrefix() + name, JSON.stringify(value));
+            return true;
+        } catch (e) {
+            // 配额满了：丢掉一半会话的缓存再试一次，还不行就放弃（不影响使用）
+            cacheTrimMsgs(Math.floor(CACHE_MAX_CONVS / 2));
+            try {
+                localStorage.setItem(cachePrefix() + name, JSON.stringify(value));
+                return true;
+            } catch (e2) { return false; }
+        }
+    }
+
+    function cacheMsgIndex() {
+        var idx = cacheGet('msgsIndex');
+        return Array.isArray(idx) ? idx : [];
+    }
+
+    function cacheTrimMsgs(keep) {
+        var idx = cacheMsgIndex();
+        while (idx.length > keep) {
+            var drop = idx.pop();
+            try { localStorage.removeItem(cachePrefix() + 'msgs:' + drop.id); } catch (e) { }
+        }
+        try { localStorage.setItem(cachePrefix() + 'msgsIndex', JSON.stringify(idx)); } catch (e) { }
+    }
+
+    function cacheTouchMsgs(convId) {
+        var idx = cacheMsgIndex().filter(function (x) { return x.id !== convId; });
+        idx.unshift({ id: convId, t: Date.now() });
+        while (idx.length > CACHE_MAX_CONVS) {
+            var drop = idx.pop();
+            try { localStorage.removeItem(cachePrefix() + 'msgs:' + drop.id); } catch (e) { }
+        }
+        try { localStorage.setItem(cachePrefix() + 'msgsIndex', JSON.stringify(idx)); } catch (e) { }
+    }
+
+    var cacheSaveTimer = null;
+    function saveMessagesCache() {
+        if (!state.activeId || !state.messages.length) return;
+        // 立刻做快照：延迟的这 700ms 里用户可能已经切到别的会话
+        var convId = state.activeId;
+        var tail = state.messages.slice(-CACHE_MAX_MSGS).map(function (m) {
+            return {
+                id: m.id, senderId: m.senderId, senderName: m.senderName,
+                senderAvatar: m.senderAvatar, senderEmail: m.senderEmail,
+                kind: m.kind, body: m.body, createdAt: m.createdAt
+            };
+        });
+        clearTimeout(cacheSaveTimer);
+        cacheSaveTimer = setTimeout(function () {
+            if (cacheSet('msgs:' + convId, tail)) cacheTouchMsgs(convId);
+        }, 700);
+    }
+
+    /* 同步中：顶部一条细进度条；结束延时 400ms 再收起，避免秒回时闪一下 */
+    var syncBarTimer = null;
+    function showSyncBar(on) {
+        var bar = $('syncBar');
+        if (!bar) return;
+        clearTimeout(syncBarTimer);
+        if (on) {
+            bar.classList.add('on');
+        } else {
+            syncBarTimer = setTimeout(function () { bar.classList.remove('on'); }, 400);
+        }
+    }
+
+    function skeletonHTML() {
+        var row = '<div class="sk-row"><div class="sk-av"></div><div class="sk-lines">' +
+            '<div class="sk-line w28"></div><div class="sk-line w68"></div></div></div>' +
+            '<div class="sk-row"><div class="sk-av"></div><div class="sk-lines">' +
+            '<div class="sk-line w42"></div><div class="sk-line w55"></div></div></div>';
+        return '<div class="msg-skeleton">' + row + row + '</div>';
+    }
+
     /* ------------------------------------------------------------ 基础请求 */
     async function capi(path, opts) {
         opts = opts || {};
@@ -4053,8 +4272,26 @@
         state.imgCache.forEach(function (url) { try { URL.revokeObjectURL(url); } catch (e) { } });
         state.imgCache = new Map();
         renderConvList();
+
+        // 先用会话列表里的摘要占位，这样缓存消息能立刻渲染（不必等网络）
+        var known = (state.convs || []).filter(function (c) { return c.id === id; })[0];
+        state.active = known || {
+            id: id, type: 'group', name: '', description: '', avatar: '',
+            visibility: 'public', joinMode: 'open', encMode: 'plain',
+            myRole: null, myStatus: null, memberCount: 0
+        };
+        if (known) { renderHeader(); renderComposer(); }
+
         var box = $('chatMsgs');
-        box.innerHTML = '<div class="chat-empty">加载中…</div>';
+        var cached = cacheGet('msgs:' + id);
+        if (Array.isArray(cached) && cached.length) {
+            cached.forEach(function (m) { m._text = msgText(m); });
+            state.messages = cached;
+            renderMessages(true);
+        } else {
+            box.innerHTML = skeletonHTML();
+        }
+        showSyncBar(true);
 
         try {
             var info = await capi('/chat/conversations/' + id);
@@ -4069,7 +4306,7 @@
                 await loadMessages();
             } catch (err) {
                 state.messages = [];
-                $('chatMsgs').innerHTML = '<div class="chat-empty">🔒 这是私密群<br><span style="font-size:.76rem;">' +
+                box.innerHTML = '<div class="chat-empty">🔒 这是私密群<br><span style="font-size:.76rem;">' +
                     '凭邀请码加入并通过审批后才能看到内容</span></div>';
             }
             connectStream();
@@ -4078,17 +4315,37 @@
                 if (last) capi('/chat/conversations/' + id + '/read', { method: 'POST', body: { id: last.id } }).catch(function () { });
             }
         } catch (e) {
-            box.innerHTML = '<div class="chat-empty">' + esc(e.message) + '</div>';
+            // 网络失败：本地有记录就继续显示，只是提示一下；完全没缓存才报错
+            if (state.messages.length) {
+                toast('网络不太好，先显示本地记录', true);
+            } else {
+                box.innerHTML = '<div class="chat-empty">' + esc(e.message) + '</div>';
+            }
+        } finally {
+            showSyncBar(false);
         }
     }
 
+    /* 有本地缓存时用 after 只拉增量；没有缓存才整段拉最近 60 条 */
     async function loadMessages() {
         if (!state.active) return;
-        var res = await capi('/chat/conversations/' + state.active.id + '/messages?limit=60');
+        var lastId = state.messages.length ? state.messages[state.messages.length - 1].id : 0;
+        var res = await capi('/chat/conversations/' + state.active.id + '/messages?limit=60'
+            + (lastId ? '&after=' + lastId : ''));
         var list = res.messages || [];
         list.forEach(function (m) { m._text = msgText(m); });
-        state.messages = list;
+
+        if (!lastId) {
+            state.messages = list;
+        } else if (list.length) {
+            var have = {};
+            state.messages.forEach(function (m) { have[m.id] = 1; });
+            list.forEach(function (m) { if (!have[m.id]) state.messages.push(m); });
+            state.messages.sort(function (a, b) { return a.id - b.id; });
+            if (state.messages.length > 200) state.messages = state.messages.slice(-200);
+        }
         renderMessages(true);
+        saveMessagesCache();
     }
 
     async function refreshActiveMessages() {
@@ -4116,6 +4373,7 @@
             }
             input.value = '';
             input.style.height = 'auto';
+            saveMessagesCache();
             loadConversations();
         } catch (e) {
             toast(e.message, true);
@@ -4178,6 +4436,7 @@
                 state.messages.push(msg);
                 renderMessages(true);
             }
+            saveMessagesCache();
             loadConversations();
         } catch (e) {
             toast(e.message, true);
@@ -4420,8 +4679,17 @@
 
     async function loadConversations() {
         if (!state.me) { state.convs = []; renderConvList(); return; }
+        // 先拿缓存铺一遍，避免列表空白
+        if (!state.convs.length) {
+            var cachedConvs = cacheGet('convs');
+            if (Array.isArray(cachedConvs) && cachedConvs.length) {
+                state.convs = cachedConvs;
+                renderConvList();
+            }
+        }
         try {
             state.convs = await capi('/chat/conversations');
+            cacheSet('convs', state.convs);
             renderConvList();
         } catch (e) { console.warn(e); }
     }
@@ -4486,6 +4754,7 @@
             if (!added) return;
 
             renderMessages(true);
+            saveMessagesCache();
             refreshListSoon();
             if (state.me) {
                 var last = state.messages[state.messages.length - 1];
