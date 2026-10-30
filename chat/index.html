@@ -2775,13 +2775,14 @@
 
             <div class="notify-block">
                 <div class="notify-head">QQ 提醒 <span class="notify-state" id="qqBindState">未绑定</span></div>
-                <div class="field-hint">生成验证码后，在 QQ 里私聊机器人发这 6 个数字即可绑定。
-                    绑定后群里有新消息会私聊提醒你（需要你在机器人资料卡里允许主动消息）。</div>
+                <div class="field-hint">填一次就全站生效：群里和私聊有人发消息，机器人会用 QQ 私聊提醒你。
+                    机器人会先加你好友，记得通过。</div>
+                <label for="myQQGlobal">我的 QQ 号</label>
+                <input id="myQQGlobal" class="chat-input" type="text" inputmode="numeric" placeholder="留空表示不接收">
                 <div class="btn-row" style="margin-top:8px;">
-                    <button class="btn-sm primary" type="button" id="qqGenCode">生成验证码</button>
-                    <button class="btn-sm" type="button" id="qqUnbind">解除绑定</button>
+                    <button class="btn-sm primary" type="button" id="saveGlobalQQ">保存</button>
+                    <button class="btn-sm" type="button" id="qqTest">发条测试</button>
                 </div>
-                <div id="qqCodeBox" style="margin-top:10px;"></div>
             </div>
 
             <div class="modal-msg" id="notifyMsg"></div>
@@ -5272,38 +5273,30 @@
     function refreshQQBind() {
         var el = $('qqBindState');
         if (!el) return;
-        var bound = Boolean(state.me && state.me.qqBound);
+        var bound = Boolean(state.me && (state.me.qqBound || state.me.qq));
         el.textContent = bound ? '已绑定' : '未绑定';
         el.className = 'notify-state ' + (bound ? 'on' : 'off');
     }
 
-    async function genQQCode() {
+    async function saveGlobalQQ() {
         if (!state.me) return openLogin('登录后才能绑定');
         try {
-            var r = await capi('/chat/me/qq/bind-code', { method: 'POST', body: {} });
-            $('qqCodeBox').innerHTML =
-                '<div class="recovery-box" style="font-size:1.5rem;letter-spacing:0.2em;text-align:center;">' +
-                esc(r.code) + '</div>' +
-                '<div class="field-hint" style="text-align:center;margin-top:8px;">' +
-                (r.botUin
-                    ? '在 QQ 里搜索 <b>' + esc(r.botUin) + '</b> 并私聊它，发送上面这 6 个数字'
-                    : '在 QQ 里私聊机器人，发送上面这 6 个数字') +
-                '<br>15 分钟内有效</div>';
-            setNotifyMsg('');
+            var v = ($('myQQGlobal').value || '').trim();
+            var r = await capi('/chat/me/qq', { method: 'POST', body: { qq: v } });
+            state.me.qq = r.qq;
+            state.me.qqBound = Boolean(r.qq);
+            refreshQQBind();
+            setNotifyMsg(r.qq ? '已绑定 QQ ' + r.qq + '，有人在群里或私聊发消息会提醒你' : '已取消 QQ 提醒');
         } catch (e) {
             setNotifyMsg(e.message, true);
         }
     }
 
-    async function unbindQQ() {
-        if (!state.me) return;
-        if (!confirm('确定解除 QQ 绑定？之后不再收到 QQ 提醒。')) return;
+    async function testQQ() {
+        if (!state.me) return openLogin('登录后才能测试');
         try {
-            await capi('/chat/me/qq/bind', { method: 'DELETE' });
-            state.me.qqBound = false;
-            refreshQQBind();
-            $('qqCodeBox').innerHTML = '';
-            setNotifyMsg('已解除绑定');
+            var r = await capi('/chat/me/qq/test', { method: 'POST', body: {} });
+            setNotifyMsg(r.sent ? '已发送，去 QQ 看看有没有收到' : '没有发出去：' + (r.reason || '未知原因'));
         } catch (e) {
             setNotifyMsg(e.message, true);
         }
@@ -5619,16 +5612,16 @@
         $('notifyBtn').onclick = function () {
             if (!state.me) return openLogin('登录后才能设置提醒');
             setNotifyMsg('');
+            $('myQQGlobal').value = (state.me && state.me.qq) || '';
             refreshQQBind();
-            $('qqCodeBox').innerHTML = '';
             openModal($('notifyModal'));
             refreshPushState();
         };
         $('pushEnable').onclick = enablePush;
         $('pushDisable').onclick = disablePush;
         $('pushTest').onclick = testPush;
-        $('qqGenCode').onclick = genQQCode;
-        $('qqUnbind').onclick = unbindQQ;
+        $('saveGlobalQQ').onclick = saveGlobalQQ;
+        $('qqTest').onclick = testQQ;
 
         var meCard = document.querySelector('.chat-me');
         if (meCard) {
