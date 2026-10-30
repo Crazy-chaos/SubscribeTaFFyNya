@@ -3342,9 +3342,10 @@
 (function () {
     'use strict';
 
-    /* 后端地址：当前挂在 MCSManager 面板域名的 /chatapi 路径下（隧道穿透，不额外开端口）。
-       以后若在 Cloudflare 加了 chat-api.crazychaos.top 的 CNAME，把这里换掉即可。 */
-    var CHAT_API = 'https://mcsm.crazychaos.top/chatapi';
+    /* 后端跑在 cloud-mail 的 Cloudflare Worker 里（D1 + KV + R2），
+       与邮箱同域，登录 cookie 自动共享，不再需要单独的隧道或端口。 */
+    var CHAT_ORIGIN = 'https://mail.crazychaos.top';
+    var CHAT_API = CHAT_ORIGIN + '/api';
     var LOGIN_REQUIRED = '登录后才能发言';
 
     var $ = function (id) { return document.getElementById(id); };
@@ -3365,7 +3366,6 @@
         discover: [],
         gkCache: new Map(),
         pubCache: new Map(),
-        es: null,
         reportTarget: null,
         bots: [],
         avatarTarget: 'user',
@@ -3547,7 +3547,7 @@
         var member = state.members.filter(function (m) { return m.id === userId; })[0];
         var pubB64 = member && member.pubKey;
         if (!pubB64) {
-            var r = await capi('/api/users/' + encodeURIComponent(userId) + '/pubkey');
+            var r = await capi('/chat/users/' + encodeURIComponent(userId) + '/pubkey');
             pubB64 = r.pubKey;
         }
         if (!pubB64) throw new Error('对方还没有生成端到端密钥');
@@ -3609,7 +3609,7 @@
         var pair = await generateIdentity();
         var code = genRecoveryCode();
         var backup = await wrapPrivForBackup(pair.privB64, code);
-        await capi('/api/me/keys', { method: 'POST', body: { pubKey: pair.pubB64, keyBackup: backup } });
+        await capi('/chat/me/keys', { method: 'POST', body: { pubKey: pair.pubB64, keyBackup: backup } });
         await IDB.set(identityStorageKey(), { privB64: pair.privB64, pubB64: pair.pubB64, createdAt: Date.now() });
         identity.id = state.me.id;
         identity.pubB64 = pair.pubB64;
@@ -3635,7 +3635,7 @@
             var code = normalizeCode($('recoverInput').value);
             if (code.length < 16) return setKeyMsg('恢复码格式不正确', true);
             try {
-                var r = await capi('/api/me/keybackup');
+                var r = await capi('/chat/me/keybackup');
                 if (!r.keyBackup) throw new Error('服务器上没有你的密钥备份');
                 var privB64 = await unwrapPrivFromBackup(r.keyBackup, code);
                 await IDB.set(identityStorageKey(), { privB64: privB64, pubB64: state.me.pubKey, createdAt: Date.now() });
@@ -3678,7 +3678,7 @@
             navigator.clipboard.writeText(formatCode(code)).then(function () { setKeyMsg('已复制'); });
         };
         $('recoveryDownload').onclick = async function () {
-            var backup = await capi('/api/me/keybackup');
+            var backup = await capi('/chat/me/keybackup');
             var blob = new Blob([JSON.stringify({
                 type: 'taffy-chat-identity',
                 userId: state.me.id,
@@ -3699,13 +3699,13 @@
     async function ensureGroupKey(conv) {
         if (!conv || conv.encMode !== 'e2ee' || conv.type !== 'group') return null;
         if (state.gkCache.has(conv.id)) return state.gkCache.get(conv.id);
-        var mine = await capi('/api/conversations/' + conv.id + '/keys/me');
+        var mine = await capi('/chat/conversations/' + conv.id + '/keys/me');
         if (!mine.wrapped) {
             if (conv.myRole === 'owner') {
                 var gk = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
                 state.gkCache.set(conv.id, gk);
                 var w = await wrapGroupKeyFor(identity.id, gk, conv.id);
-                await capi('/api/conversations/' + conv.id + '/keys', { method: 'POST', body: { userId: identity.id, wrapped: w } });
+                await capi('/chat/conversations/' + conv.id + '/keys', { method: 'POST', body: { userId: identity.id, wrapped: w } });
                 await distributeKeys(conv, gk);
                 return gk;
             }
@@ -3719,12 +3719,12 @@
 
     async function distributeKeys(conv, gk) {
         try {
-            var list = await capi('/api/conversations/' + conv.id + '/keys/members');
+            var list = await capi('/chat/conversations/' + conv.id + '/keys/members');
             var missing = list.filter(function (x) { return !x.hasKey && x.pubKey && x.userId !== identity.id; });
             for (var i = 0; i < missing.length; i++) {
                 try {
                     var wrapped = await wrapGroupKeyFor(missing[i].userId, gk, conv.id);
-                    await capi('/api/conversations/' + conv.id + '/keys', { method: 'POST', body: { userId: missing[i].userId, wrapped: wrapped } });
+                    await capi('/chat/conversations/' + conv.id + '/keys', { method: 'POST', body: { userId: missing[i].userId, wrapped: wrapped } });
                 } catch (e) { console.warn('分发失败', missing[i].userId, e.message); }
             }
             if (missing.length) toast('已为 ' + missing.length + ' 位成员分发群密钥');
@@ -3765,7 +3765,7 @@
         var s2 = (typeof v === 'string' ? v : (v && v.avatar)) || '';
         if (!s2) return '';
         if (s2.indexOf('http://') === 0 || s2.indexOf('https://') === 0) return s2;
-        if (s2.indexOf('/api/avatar/') === 0) return CHAT_API + s2;
+        if (s2.indexOf('/api/chat/avatar/') === 0) return CHAT_ORIGIN + s2;
         s2 = s2.replace(/^(\.\.\/)+/, '').replace(/^\.\//, '');
         return s2.charAt(0) === '/' ? s2 : '/' + s2;
     }
@@ -3910,7 +3910,7 @@
                 lastDay = day;
                 html += '<div class="chat-day">' + esc(new Date(m.createdAt).toLocaleDateString('zh-CN')) + '</div>';
             }
-            var mine = state.me && m.senderId === state.me.id;
+            var mine = state.me && (m.senderId === state.me.uid || m.senderEmail === state.me.id);
             var av = avatarOf(m.senderName, m.senderId);
             html += '<div class="msg-row' + (mine ? ' mine' : '') + '" data-mid="' + m.id + '">' +
                 avatarHTML(m.senderAvatar, m.senderName, m.senderId, 'msg-avatar') +
@@ -3940,7 +3940,7 @@
         var b = m.body || {};
         var tk = localStorage.getItem('token');
         var path = b.key.split('/').map(encodeURIComponent).join('/');
-        var res = await fetch(CHAT_API + '/api/blob/' + path, {
+        var res = await fetch(CHAT_API + '/chat/blob/' + path, {
             credentials: 'include',
             headers: tk ? { Authorization: tk } : {}
         });
@@ -4061,7 +4061,7 @@
         box.innerHTML = '<div class="chat-empty">加载中…</div>';
 
         try {
-            var info = await capi('/api/conversations/' + id);
+            var info = await capi('/chat/conversations/' + id);
             state.active = info.conversation;
             state.members = info.members || [];
             state.pubCache.clear();
@@ -4079,10 +4079,10 @@
                 $('chatMsgs').innerHTML = '<div class="chat-empty">🔒 这是私密群<br><span style="font-size:.76rem;">' +
                     '凭邀请码加入并通过审批后才能看到内容</span></div>';
             }
-            if (!localStorage.getItem('token')) connectStream();
+            connectStream();
             if (state.me && identity.priv) {
                 var last = state.messages[state.messages.length - 1];
-                if (last) capi('/api/conversations/' + id + '/read', { method: 'POST', body: { id: last.id } }).catch(function () { });
+                if (last) capi('/chat/conversations/' + id + '/read', { method: 'POST', body: { id: last.id } }).catch(function () { });
             }
         } catch (e) {
             box.innerHTML = '<div class="chat-empty">' + esc(e.message) + '</div>';
@@ -4091,7 +4091,7 @@
 
     async function loadMessages() {
         if (!state.active) return;
-        var res = await capi('/api/conversations/' + state.active.id + '/messages?limit=60');
+        var res = await capi('/chat/conversations/' + state.active.id + '/messages?limit=60');
         var list = res.messages || [];
         if (state.me && identity.priv) await decryptMessages(state.active, list);
         else list.forEach(function (m) { m._text = m.body && typeof m.body.text === 'string' ? m.body.text : '[加密消息]'; });
@@ -4124,7 +4124,7 @@
             } else {
                 body = { text: text };
             }
-            var msg = await capi('/api/conversations/' + conv.id + '/messages', { method: 'POST', body: { kind: 'text', body: body } });
+            var msg = await capi('/chat/conversations/' + conv.id + '/messages', { method: 'POST', body: { kind: 'text', body: body } });
             msg._text = text;
             if (!state.messages.some(function (m) { return m.id === msg.id; })) {
                 state.messages.push(msg);
@@ -4182,7 +4182,7 @@
                 body = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: ivBytes }, gk, await packed.blob.arrayBuffer());
                 ctype = 'application/octet-stream';
             }
-            var up = await fetch(CHAT_API + '/api/upload?conv=' + encodeURIComponent(conv.id), {
+            var up = await fetch(CHAT_API + '/chat/upload?conv=' + encodeURIComponent(conv.id), {
                 method: 'POST',
                 credentials: 'include',
                 headers: {
@@ -4193,7 +4193,7 @@
             });
             var upData = await up.json();
             if (!up.ok || Number(upData.code) !== 200) throw new Error((upData && upData.message) || '上传失败');
-            var msg = await capi('/api/conversations/' + conv.id + '/messages', {
+            var msg = await capi('/chat/conversations/' + conv.id + '/messages', {
                 method: 'POST',
                 body: { kind: 'image', body: { key: upData.data.key, iv: iv, w: packed.w, h: packed.h } }
             });
@@ -4304,14 +4304,14 @@
         }
         if (act === 'leave') {
             if (!confirm('确定退出这个群？')) return;
-            await capi('/api/conversations/' + conv.id + '/leave', { method: 'POST', body: {} });
+            await capi('/chat/conversations/' + conv.id + '/leave', { method: 'POST', body: {} });
             closeConversation();
             loadConversations();
             return;
         }
         if (act === 'archive') {
             if (!confirm('解散后所有成员都无法再访问，确定？')) return;
-            await capi('/api/conversations/' + conv.id, { method: 'DELETE' });
+            await capi('/chat/conversations/' + conv.id, { method: 'DELETE' });
             closeConversation();
             loadConversations();
         }
@@ -4329,7 +4329,7 @@
             return;
         }
         try {
-            var r = await capi('/api/conversations/' + conv.id + '/join', { method: 'POST', body: {} });
+            var r = await capi('/chat/conversations/' + conv.id + '/join', { method: 'POST', body: {} });
             if (r.status === 'pending') toast('申请已提交，等待群主审批');
             else toast('已加入');
             openConversation(conv.id);
@@ -4339,7 +4339,7 @@
 
     async function createInvite(conv) {
         try {
-            var r = await capi('/api/conversations/' + conv.id + '/invites', { method: 'POST', body: { ttlHours: 168, maxUses: 0 } });
+            var r = await capi('/chat/conversations/' + conv.id + '/invites', { method: 'POST', body: { ttlHours: 168, maxUses: 0 } });
             var box = $('infoInviteBox');
             if (box) {
                 box.innerHTML = '<div class="field-hint">邀请码（7 天有效，次数不限，点击复制）</div>' +
@@ -4353,7 +4353,7 @@
 
     async function showPending(conv) {
         try {
-            var rows = await capi('/api/conversations/' + conv.id + '/requests');
+            var rows = await capi('/chat/conversations/' + conv.id + '/requests');
             var box = $('infoInviteBox');
             if (!rows.length) { box.innerHTML = '<div class="field-hint">没有待审批的申请</div>'; return; }
             box.innerHTML = '<div class="field-hint">待审批</div>' + rows.map(function (r) {
@@ -4372,7 +4372,7 @@
 
     async function decide(userId, action) {
         try {
-            await capi('/api/conversations/' + state.active.id + '/requests', { method: 'POST', body: { userId: userId, action: action } });
+            await capi('/chat/conversations/' + state.active.id + '/requests', { method: 'POST', body: { userId: userId, action: action } });
             toast(action === 'approve' ? '已通过' : '已拒绝');
             openConversation(state.active.id);
         } catch (e) { toast(e.message, true); }
@@ -4381,7 +4381,7 @@
     async function kick(userId) {
         if (!confirm('把这个成员移出群组？')) return;
         try {
-            await capi('/api/conversations/' + state.active.id + '/kick', { method: 'POST', body: { userId: userId } });
+            await capi('/chat/conversations/' + state.active.id + '/kick', { method: 'POST', body: { userId: userId } });
             toast('已移出');
             openConversation(state.active.id);
         } catch (e) { toast(e.message, true); }
@@ -4406,7 +4406,7 @@
         // 即使本机没有 token 也要试一次：cloud-mail 写的是 .crazychaos.top 域 cookie，
         // 带上凭据请求就能直接认出来，避免“主站登录了、聊天还要再登一次”。
         try {
-            var r = await capi('/api/me');
+            var r = await capi('/chat/me');
             state.me = r.user;
             state.isAdmin = r.isAdmin;
             state.hasKey = r.hasKey;
@@ -4446,7 +4446,7 @@
         } else {
             state.convs = [];
             renderConvList();
-            if (state.es) { state.es.close(); state.es = null; }
+            stopPolling();
             $('chatMeName').textContent = '游客';
             $('chatMeSub').textContent = '仅可浏览公开群聊';
             var ab = $('adminOpenBtn');
@@ -4459,62 +4459,67 @@
     async function loadConversations() {
         if (!state.me) { state.convs = []; renderConvList(); return; }
         try {
-            state.convs = await capi('/api/conversations');
+            state.convs = await capi('/chat/conversations');
             renderConvList();
         } catch (e) { console.warn(e); }
     }
 
     async function loadDiscover() {
         try {
-            state.discover = await capi('/api/public/groups?limit=40' + (($('discoverSearch').value || '').trim()
+            state.discover = await capi('/chat/public/groups?limit=40' + (($('discoverSearch').value || '').trim()
                 ? '&q=' + encodeURIComponent($('discoverSearch').value.trim()) : ''));
             // 公开群也需要 base 信息用于打开（无 token 也能读）
             renderDiscover();
         } catch (e) { console.warn(e); }
     }
 
-    /* ------------------------------------------------------------ SSE */
-    function connectStream() {
-        if (state.es) { state.es.close(); state.es = null; }
-        var token = localStorage.getItem('token');
-        var convs = state.convs.map(function (c) { return c.id; });
-        if (state.activeId && convs.indexOf(state.activeId) < 0) convs.push(state.activeId);
-        var url = CHAT_API + '/api/stream?convs=' + encodeURIComponent(convs.slice(0, 40).join(',')) +
-            (token ? '&token=' + encodeURIComponent(token) : '');
-        try {
-            var es = new EventSource(url, { withCredentials: true });
-            state.es = es;
-            es.addEventListener('message', function (ev) {
-                var msg = JSON.parse(ev.data);
-                onIncoming(msg);
-            });
-            es.addEventListener('keys', function (ev) {
-                var d = JSON.parse(ev.data);
-                if (state.active && d.convId === state.active.id) {
-                    state.gkCache.delete(state.active.id);
-                    refreshActiveMessages();
-                }
-            });
-            es.addEventListener('conversation', function () { loadConversations(); });
-            es.onerror = function () { es.close(); state.es = null; };
-        } catch (e) { /* 浏览器不支持时忽略 */ }
+    /* ------------------------------------------------------------ 实时（轮询） */
+    /* Cloudflare Workers 没有长连接，SSE 用不了，改成 4 秒一次的增量拉取：
+       只取上次最大 id 之后的新消息，正常情况每次只回 0~几条，开销很小。 */
+    var pollTimer = null;
+    var listTimer = null;
+
+    function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (listTimer) { clearInterval(listTimer); listTimer = null; }
     }
 
-    async function onIncoming(msg) {
-        if (state.active && msg.convId === state.active.id) {
-            if (state.messages.some(function (m) { return m.id === msg.id; })) return;
-            var copy = Object.assign({}, msg);
-            if (state.active.encMode === 'e2ee') {
-                try {
-                    var key = await keyForConversation(state.active);
-                    copy._text = key ? await decryptText(key, msg.body) : '[加密消息 · 缺少密钥]';
-                } catch (e) { copy._text = '[加密消息 · 缺少密钥]'; }
-            } else copy._text = msgText(msg);
-            state.messages.push(copy);
+    function connectStream() {
+        stopPolling();
+        pollTimer = setInterval(pollActive, 4000);
+        listTimer = setInterval(function () {
+            if (document.hidden || !state.me) return;
+            loadConversations();
+        }, 15000);
+    }
+
+    async function pollActive() {
+        if (document.hidden || !state.active) return;
+        var conv = state.active;
+        var lastId = state.messages.length ? state.messages[state.messages.length - 1].id : 0;
+        try {
+            var res = await capi('/chat/conversations/' + conv.id + '/messages?limit=60'
+                + (lastId ? '&after=' + lastId : ''));
+            var list = (res && res.messages) || [];
+            if (!list.length) return;
+
+            if (state.me && identity.priv) await decryptMessages(conv, list);
+            else list.forEach(function (m) { m._text = msgText(m); });
+
+            var added = 0;
+            list.forEach(function (m) {
+                if (state.messages.some(function (x) { return x.id === m.id; })) return;
+                state.messages.push(m);
+                added++;
+            });
+            if (!added) return;
+
             renderMessages(true);
-            if (state.me) capi('/api/conversations/' + state.active.id + '/read', { method: 'POST', body: { id: msg.id } }).catch(function () { });
-        }
-        loadConversations();
+            if (state.me && identity.priv) {
+                var last = state.messages[state.messages.length - 1];
+                if (last) capi('/chat/conversations/' + conv.id + '/read', { method: 'POST', body: { id: last.id } }).catch(function () { });
+            }
+        } catch (e) { /* 轮询失败静默重试 */ }
     }
 
     /* ------------------------------------------------------------ 弹窗：建群 */
@@ -4546,7 +4551,7 @@
             msg.textContent = '创建中…';
             msg.className = 'modal-msg';
             try {
-                var conv = await capi('/api/conversations', {
+                var conv = await capi('/chat/conversations', {
                     method: 'POST',
                     body: {
                         type: 'group',
@@ -4581,7 +4586,7 @@
             msg.textContent = '验证中…';
             msg.className = 'modal-msg';
             try {
-                var r = await capi('/api/conversations/' + state.active.id + '/join', {
+                var r = await capi('/chat/conversations/' + state.active.id + '/join', {
                     method: 'POST', body: { code: $('jcCode').value.trim().toUpperCase() }
                 });
                 closeModal($('joinCodeModal'));
@@ -4609,7 +4614,7 @@
             }
             timer = setTimeout(async function () {
                 try {
-                    var rows = await capi('/api/users/search?q=' + encodeURIComponent(kw));
+                    var rows = await capi('/chat/users/search?q=' + encodeURIComponent(kw));
                     $('dmResults').innerHTML = rows.length ? rows.map(function (u) {
                         return '<div class="result-row" data-dm="' + esc(u.id) + '">' +
                             avatarHTML(u.avatar, u.nickname, u.id, 'msg-avatar') +
@@ -4626,7 +4631,7 @@
 
     async function startDM(userId) {
         try {
-            var conv = await capi('/api/dm', { method: 'POST', body: { userId: userId } });
+            var conv = await capi('/chat/dm', { method: 'POST', body: { userId: userId } });
             closeModal($('newDMModal'));
             $('dmSearch').value = '';
             $('dmResults').innerHTML = '';
@@ -4640,7 +4645,7 @@
         $('reportForm').onsubmit = async function (ev) {
             ev.preventDefault();
             try {
-                await capi('/api/reports', {
+                await capi('/chat/reports', {
                     method: 'POST',
                     body: { convId: state.active.id, msgId: state.reportTarget, reason: $('rpReason').value.trim() }
                 });
@@ -4658,7 +4663,7 @@
             var body = $('keyModalBody');
             if (!identity.priv) return showRecoverPrompt();
             var backup = null;
-            try { backup = (await capi('/api/me/keybackup')).keyBackup; } catch (e) { /* ignore */ }
+            try { backup = (await capi('/chat/me/keybackup')).keyBackup; } catch (e) { /* ignore */ }
             body.innerHTML =
                 '<p class="field-hint" style="text-align:center;">本机已持有私钥，服务器上只有公钥和一段加密备份。</p>' +
                 '<div class="info-kv"><span>我的标识</span><b>' + esc(state.me.id) + '</b></div>' +
@@ -4672,7 +4677,7 @@
                 '因此如果你忘了它，就只能重新生成密钥（旧消息会打不开）。</p>';
             openModal($('keyModal'));
             $('keyExport').onclick = async function () {
-                var b = backup || (await capi('/api/me/keybackup')).keyBackup;
+                var b = backup || (await capi('/chat/me/keybackup')).keyBackup;
                 var blob = new Blob([JSON.stringify({
                     type: 'taffy-chat-identity-public',
                     userId: state.me.id,
@@ -4731,13 +4736,13 @@
         var val = url || state.avatarPick || '';
         try {
             if (state.avatarTarget === 'group') {
-                await capi('/api/conversations/' + state.active.id, { method: 'PATCH', body: { avatar: val } });
+                await capi('/chat/conversations/' + state.active.id, { method: 'PATCH', body: { avatar: val } });
                 closeModal($('avatarModal'));
                 toast('群头像已更新');
                 await openConversation(state.active.id);
                 loadConversations();
             } else {
-                var r = await capi('/api/me/avatar', { method: 'POST', body: { avatar: val } });
+                var r = await capi('/chat/me/avatar', { method: 'POST', body: { avatar: val } });
                 state.me.avatar = r.avatar;
                 applyAvatar(r.avatar);
                 closeModal($('avatarModal'));
@@ -4780,7 +4785,7 @@
 
     async function addMember(userId) {
         try {
-            var r = await capi('/api/conversations/' + state.active.id + '/members', { method: 'POST', body: { userId: userId } });
+            var r = await capi('/chat/conversations/' + state.active.id + '/members', { method: 'POST', body: { userId: userId } });
             $('amMsg').textContent = '已添加 ' + (r.nickname || userId);
             var convId = state.active.id;
             await openConversation(convId);
@@ -4856,7 +4861,7 @@
             var perm = Notification.permission === 'granted'
                 ? 'granted' : await Notification.requestPermission();
             if (perm !== 'granted') throw new Error('你拒绝了通知权限，可以在浏览器地址栏左侧改回来');
-            var cfg = await capi('/api/push/config');
+            var cfg = await capi('/chat/push/config');
             var reg = await ensureSW();
             var sub = await reg.pushManager.getSubscription();
             if (!sub) {
@@ -4865,7 +4870,7 @@
                     applicationServerKey: b64uToBytes(cfg.publicKey)
                 });
             }
-            await capi('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
+            await capi('/chat/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
             setPushState('已开启', 'on');
             setNotifyMsg('已开启，可以点「发条测试」验证一下');
         } catch (e) {
@@ -4879,7 +4884,7 @@
             var reg = await navigator.serviceWorker.getRegistration('/chat/');
             var sub = reg ? await reg.pushManager.getSubscription() : null;
             if (sub) {
-                await capi('/api/push/subscribe', { method: 'DELETE', body: { endpoint: sub.endpoint } }).catch(function () { });
+                await capi('/chat/push/subscribe', { method: 'DELETE', body: { endpoint: sub.endpoint } }).catch(function () { });
                 await sub.unsubscribe();
             }
             setPushState('未开启', 'off');
@@ -4891,7 +4896,7 @@
 
     async function testPush() {
         try {
-            var r = await capi('/api/push/test', { method: 'POST', body: {} });
+            var r = await capi('/chat/push/test', { method: 'POST', body: {} });
             setNotifyMsg('已发送 ' + r.sent + ' 条，成功 ' + r.ok + ' 条');
         } catch (e) {
             setNotifyMsg(e.message, true);
@@ -4901,7 +4906,7 @@
     async function saveGlobalQQ() {
         try {
             var v = ($('myQQGlobal').value || '').trim();
-            var r = await capi('/api/me/qq', { method: 'POST', body: { qq: v } });
+            var r = await capi('/chat/me/qq', { method: 'POST', body: { qq: v } });
             state.me.qq = r.qq;
             setNotifyMsg(r.qq ? '已绑定 QQ ' + r.qq + '，有人在群里或私聊发消息会提醒你' : '已取消 QQ 提醒');
         } catch (e) {
@@ -4959,7 +4964,7 @@
         $('adminGroupSearchBtn').onclick = function () { loadAdminGroups($('adminGroupSearch').value.trim()); };
         $('botCreateBtn').onclick = async function () {
             try {
-                var r = await capi('/api/admin/bots', {
+                var r = await capi('/chat/admin/bots', {
                     method: 'POST',
                     body: {
                         name: $('botName').value.trim(),
@@ -4991,7 +4996,7 @@
 
     async function loadAdminPane(pane) {
         if (pane === 'overview') {
-            var s = await capi('/api/admin/stats');
+            var s = await capi('/chat/admin/stats');
             $('pane-overview').innerHTML =
                 '<div class="stat-grid">' +
                 stat('在线', s.online) + stat('用户', s.users) + stat('群组', s.groups) +
@@ -5013,7 +5018,7 @@
     }
 
     async function loadAdminUsers(kw) {
-        var rows = await capi('/api/admin/users' + (kw ? '?q=' + encodeURIComponent(kw) : ''));
+        var rows = await capi('/chat/admin/users' + (kw ? '?q=' + encodeURIComponent(kw) : ''));
         $('adminUserList').innerHTML = rows.map(function (u) {
             return '<div class="admin-row"><span class="grow">' + esc(u.nickname) +
                 ' <span class="muted">' + esc(u.id) + '</span></span>' +
@@ -5024,7 +5029,7 @@
         }).join('') || '<div class="field-hint">没有用户</div>';
         $('adminUserList').querySelectorAll('[data-ban]').forEach(function (b) {
             b.onclick = async function () {
-                await capi('/api/admin/users/' + encodeURIComponent(b.getAttribute('data-ban')), {
+                await capi('/chat/admin/users/' + encodeURIComponent(b.getAttribute('data-ban')), {
                     method: 'POST', body: { banned: b.getAttribute('data-v') === '1' }
                 });
                 loadAdminUsers(kw);
@@ -5033,7 +5038,7 @@
     }
 
     async function loadAdminGroups(kw) {
-        var rows = await capi('/api/admin/groups' + (kw ? '?q=' + encodeURIComponent(kw) : ''));
+        var rows = await capi('/chat/admin/groups' + (kw ? '?q=' + encodeURIComponent(kw) : ''));
         $('adminGroupList').innerHTML = rows.map(function (g) {
             return '<div class="admin-row"><span class="grow">' + esc(g.name) +
                 ' <span class="muted">' + esc(g.ownerId || '') + ' · ' + g.memberCount + '人 · ' +
@@ -5046,7 +5051,7 @@
         }).join('') || '<div class="field-hint">没有群组</div>';
         $('adminGroupList').querySelectorAll('[data-lock]').forEach(function (b) {
             b.onclick = async function () {
-                await capi('/api/admin/groups/' + b.getAttribute('data-lock'), {
+                await capi('/chat/admin/groups/' + b.getAttribute('data-lock'), {
                     method: 'POST', body: { locked: b.getAttribute('data-v') === '1' }
                 });
                 loadAdminGroups(kw);
@@ -5055,14 +5060,14 @@
         $('adminGroupList').querySelectorAll('[data-arch]').forEach(function (b) {
             b.onclick = async function () {
                 if (!confirm('解散该群？')) return;
-                await capi('/api/admin/groups/' + b.getAttribute('data-arch'), { method: 'POST', body: { archived: true } });
+                await capi('/chat/admin/groups/' + b.getAttribute('data-arch'), { method: 'POST', body: { archived: true } });
                 loadAdminGroups(kw);
             };
         });
     }
 
     async function loadAdminReports() {
-        var rows = await capi('/api/admin/reports');
+        var rows = await capi('/chat/admin/reports');
         $('pane-reports').innerHTML = rows.map(function (r) {
             return '<div class="admin-row"><span class="grow">#' + r.id + ' ' + esc(r.reason) +
                 ' <span class="muted">' + esc(r.reporter) + ' · ' + esc(r.messagePreview || '') + '</span></span>' +
@@ -5072,7 +5077,7 @@
         }).join('') || '<div class="field-hint">没有举报</div>';
         $('pane-reports').querySelectorAll('[data-res]').forEach(function (b) {
             b.onclick = async function () {
-                await capi('/api/admin/reports/' + b.getAttribute('data-res'), {
+                await capi('/chat/admin/reports/' + b.getAttribute('data-res'), {
                     method: 'POST', body: { status: 'resolved', deleteMessage: true, msgId: Number(b.getAttribute('data-msg')) || 0 }
                 });
                 loadAdminReports();
@@ -5080,14 +5085,14 @@
         });
         $('pane-reports').querySelectorAll('[data-dismiss]').forEach(function (b) {
             b.onclick = async function () {
-                await capi('/api/admin/reports/' + b.getAttribute('data-dismiss'), { method: 'POST', body: { status: 'dismissed' } });
+                await capi('/chat/admin/reports/' + b.getAttribute('data-dismiss'), { method: 'POST', body: { status: 'dismissed' } });
                 loadAdminReports();
             };
         });
     }
 
     async function loadAdminBots() {
-        var rows = await capi('/api/admin/bots');
+        var rows = await capi('/chat/admin/bots');
         $('adminBotList').innerHTML = rows.map(function (b) {
             return '<div class="admin-row"><span class="grow">' + esc(b.name) +
                 ' <span class="muted">' + esc(b.endpoint) + ' · QQ群 ' + esc(b.qqGroupId || '-') + '</span></span>' +
@@ -5099,7 +5104,7 @@
             b.onclick = async function () {
                 b.disabled = true;
                 try {
-                    var r = await capi('/api/admin/bots/' + b.getAttribute('data-test') + '/test', { method: 'POST', body: {} });
+                    var r = await capi('/chat/admin/bots/' + b.getAttribute('data-test') + '/test', { method: 'POST', body: {} });
                     toast(r.ok ? '测试消息已发出' : ('失败：' + (r.message || r.body || r.status)), !r.ok);
                 } catch (e) { toast(e.message, true); }
                 b.disabled = false;
@@ -5108,7 +5113,7 @@
         $('adminBotList').querySelectorAll('[data-del]').forEach(function (b) {
             b.onclick = async function () {
                 if (!confirm('删除这个机器人？')) return;
-                await capi('/api/admin/bots/' + b.getAttribute('data-del'), { method: 'DELETE' });
+                await capi('/chat/admin/bots/' + b.getAttribute('data-del'), { method: 'DELETE' });
                 loadAdminBots();
             };
         });
@@ -5117,14 +5122,14 @@
     async function fillBotConvSelect() {
         var sel = $('botConv');
         if (!sel) return;
-        var rows = state.discover.length ? state.discover : await capi('/api/public/groups?limit=50').catch(function () { return []; });
+        var rows = state.discover.length ? state.discover : await capi('/chat/public/groups?limit=50').catch(function () { return []; });
         sel.innerHTML = '<option value="">不订阅</option>' + rows.map(function (g) {
             return '<option value="' + esc(g.id) + '">' + esc(g.name) + '</option>';
         }).join('');
     }
 
     async function loadAdminAudit() {
-        var rows = await capi('/api/admin/audit');
+        var rows = await capi('/chat/admin/audit');
         $('pane-audit').innerHTML = rows.map(function (r) {
             return '<div class="admin-row"><span class="grow">' + esc(r.action) + ' <span class="muted">' +
                 esc(r.actor) + ' → ' + esc(r.target) + '</span></span>' +
@@ -5194,7 +5199,7 @@
             if (file.size > 2 * 1024 * 1024) return setAvatarMsg('图片请控制在 2MB 以内', true);
             setAvatarMsg('上传中…');
             try {
-                var res = await fetch(CHAT_API + '/api/me/avatar/upload', {
+                var res = await fetch(CHAT_API + '/chat/me/avatar/upload', {
                     method: 'POST',
                     credentials: 'include',
                     headers: {
@@ -5258,7 +5263,7 @@
             if (!kw) { $('amResults').innerHTML = '<div class="field-hint">输入 UID 或邮箱搜索</div>'; return; }
             amTimer = setTimeout(async function () {
                 try {
-                    var rows = await capi('/api/users/search?q=' + encodeURIComponent(kw));
+                    var rows = await capi('/chat/users/search?q=' + encodeURIComponent(kw));
                     renderMemberResults(rows);
                 } catch (e) {
                     $('amResults').innerHTML = '<div class="field-hint">' + esc(e.message) + '</div>';
@@ -5318,7 +5323,7 @@
             state.convs = [];
             identity = { priv: null, pubB64: null, id: null };
             renderConvList();
-            if (state.es) { state.es.close(); state.es = null; }
+            stopPolling();
             $('chatMeName').textContent = '游客';
             $('chatMeSub').textContent = '仅可浏览公开群聊';
             var adminBtn = $('adminOpenBtn');
