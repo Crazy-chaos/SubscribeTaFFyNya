@@ -2543,6 +2543,39 @@
     }
 }
 
+/* ---------- 免打扰 ---------- */
+.mute-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--text);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 32px;
+}
+
+.mute-row input {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    accent-color: var(--pink);
+    cursor: pointer;
+}
+
+.tag-mute {
+    font-size: 0.62rem;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgba(148, 130, 220, 0.18);
+    border: 1px solid var(--glass-border);
+}
+
+.conv-item:has(.tag-mute) .conv-preview {
+    opacity: 0.62;
+}
+
     </style>
     <link rel="stylesheet" href="/assets/mobile.css">
 </head>
@@ -2857,24 +2890,18 @@
             </div>
 
             <div class="notify-block">
-                <div class="notify-head">QQ 二维码扫描添加 bot</div>
+                <div class="notify-head">QQ 提醒 <span class="notify-state" id="qqBindState">未绑定</span></div>
+                <div class="field-hint">填一次就全站生效：群里和私聊有人发消息，机器人会用 QQ 私聊提醒你。</div>
                 <div class="qq-add">
                     <button class="qq-add-thumb" type="button" id="qqQrOpen" title="点击放大二维码">
                         <img src="/assets/qq-bot-qr.webp" alt="机器人二维码">
                     </button>
                     <div class="qq-add-text">
-                        <div class="qq-add-title">扫一扫加机器人好友</div>
-                        <div class="field-hint">用手机 QQ 扫左边的码，把机器人加成好友并点通过。
-                            之后在下面填你自己的 QQ 号保存，群里有新消息它才会私聊提醒你。</div>
+                        <div class="qq-add-title">QQ 二维码扫描添加 bot</div>
+                        <div class="field-hint">用手机 QQ 扫左边的码，把机器人加成好友并点通过。</div>
                         <div class="qq-add-uin">机器人 QQ <b>3327730431</b> · 昵称「推送大王」</div>
                     </div>
                 </div>
-            </div>
-
-            <div class="notify-block">
-                <div class="notify-head">QQ 提醒 <span class="notify-state" id="qqBindState">未绑定</span></div>
-                <div class="field-hint">填一次就全站生效：群里和私聊有人发消息，机器人会用 QQ 私聊提醒你。
-                    机器人会先加你好友，记得通过。</div>
                 <label for="myQQGlobal">我的 QQ 号</label>
                 <input id="myQQGlobal" class="chat-input" type="text" inputmode="numeric" placeholder="留空表示不接收">
                 <div class="btn-row" style="margin-top:8px;">
@@ -4211,7 +4238,8 @@
     /* 收不到系统通知时，至少让切到别的标签页也能看见有新消息 */
     function updateTitleUnread() {
         var total = (state.convs || []).reduce(function (n2, c) {
-            return n2 + (Number(c.unread) || 0);
+            // 免打扰的会话不计进标签页红点
+            return c.muted ? n2 : n2 + (Number(c.unread) || 0);
         }, 0);
         document.title = total > 0
             ? '(' + (total > 99 ? '99+' : total) + ') 聊天组'
@@ -4238,6 +4266,7 @@
         list.innerHTML = rows.map(function (c) {
             var av = avatarOf(c.name, c.id);
             var badges = '';
+            if (c.muted) badges += '<span class="tag-mute" title="免打扰">🔕</span>';
             if (c.encMode === 'e2ee') badges += '<span class="tag-lock">🔒</span>';
             if (c.visibility === 'private') badges += '<span class="tag-lock">私密</span>';
             if (c.myStatus === 'pending') badges += '<span class="tag-lock">待审批</span>';
@@ -4645,6 +4674,20 @@
         }
     }
 
+    async function setMuted(muted) {
+        if (!state.active) return;
+        try {
+            var r = await capi('/chat/conversations/' + state.active.id + '/mute', { method: 'POST', body: { muted: muted } });
+            state.active.muted = r.muted;
+            (state.convs || []).forEach(function (c) { if (c.id === state.active.id) c.muted = r.muted; });
+            renderConvList();
+            toast(r.muted ? '已开启免打扰，不会再发提醒' : '已关闭免打扰');
+        } catch (e) {
+            toast(e.message, true);
+            renderInfo();
+        }
+    }
+
     /* ------------------------------------------------------------ 右侧信息 */
     function renderInfo() {
         var box = $('chatInfoBody');
@@ -4672,6 +4715,14 @@
             kv('加入方式', { open: '自由加入', approval: '需要审批', invite: '邀请码' }[conv.joinMode] || '-') +
             kv('消息存储', '服务端明文，仅群成员可读') +
             '</div>';
+
+        if (conv.myStatus === 'active') {
+            html += '<div class="info-section"><h3>通知</h3>' +
+                '<label class="mute-row"><input type="checkbox" id="muteToggle"' + (conv.muted ? ' checked' : '') + '>' +
+                '<span>消息免打扰</span></label>' +
+                '<div class="field-hint">开启后，这个会话的 QQ 提醒和浏览器通知都不会再发给你，未读数照常统计，也不进标签页红点。</div>' +
+                '</div>';
+        }
 
         if (conv.type === 'group') {
             html += '<div class="info-section"><h3>操作</h3><div class="btn-row">';
@@ -4707,6 +4758,8 @@
         box.querySelectorAll('[data-act]').forEach(function (btn) {
             btn.onclick = function () { handleInfoAction(btn.getAttribute('data-act')); };
         });
+        var muteEl = $('muteToggle');
+        if (muteEl) muteEl.onchange = function () { setMuted(muteEl.checked); };
         box.querySelectorAll('[data-kick]').forEach(function (btn) {
             btn.onclick = function () { kick(btn.getAttribute('data-kick')); };
         });
