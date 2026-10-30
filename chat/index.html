@@ -2386,6 +2386,80 @@
     }
 }
 
+/* ---------- 性能：削减毛玻璃与滚动开销 ---------- */
+
+/* 大面积模糊很贵：导航栏 20px、三个面板各 18px、弹窗还叠了两层。
+   桌面端把半径压到 8-10px（视觉几乎无差），弹窗遮罩直接去掉。 */
+.chat-panel {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.navbar {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.profile-popover,
+.auth-card {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.auth-modal {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* 消息容器：关掉平滑滚动。
+   轮询每隔几秒就会置一次 scrollTop，smooth 会一直演滚动动画，观感就是卡。 */
+.chat-msgs {
+    scroll-behavior: auto;
+    overscroll-behavior: contain;
+    contain: layout paint style;
+}
+
+.msg-row {
+    contain: layout style;
+}
+
+/* 手机上直接全关：十几层 blur 会吃掉整块帧率，
+   关掉后只是少了磨砂感，底色与文字对比度基本不变。 */
+@media (max-width: 820px) {
+
+    .navbar,
+    .sidebar,
+    .chat-panel,
+    .chat-intro,
+    .chat-info,
+    .chat-list,
+    .chat-main,
+    .header-profile-btn,
+    .hamburger-btn,
+    .auth-login-btn,
+    .auth-logout-btn,
+    .auth-user-pill,
+    .auth-card,
+    .profile-popover,
+    .toast-item {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+}
+
+/* 系统开启「减少动态效果」时同样关掉模糊 */
+@media (prefers-reduced-motion: reduce) {
+
+    .navbar,
+    .chat-panel,
+    .chat-intro,
+    .auth-card,
+    .profile-popover {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+}
+
     </style>
     <link rel="stylesheet" href="/assets/mobile.css">
 </head>
@@ -4726,11 +4800,18 @@
 
     function connectStream() {
         stopPolling();
-        pollTimer = setInterval(pollActive, 4000);
+        pollTimer = setInterval(pollActive, 6000);
         listTimer = setInterval(function () {
             if (document.hidden || !state.me) return;
             refreshListSoon();
         }, 60000);
+        // 切回页面时立刻拉一次，避免回来后要等一个完整周期
+        if (!connectStream._wired) {
+            connectStream._wired = true;
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden && state.active) pollActive();
+            });
+        }
     }
 
     async function pollActive() {
@@ -5603,7 +5684,6 @@
         renderComposer();
         renderMessages();
         connectStream();
-        setInterval(function () { if (state.me) loadConversations(); }, 45000);
 
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/chat/sw.js', { scope: '/chat/' }).catch(function () { });
