@@ -99,3 +99,33 @@
         padding-top: env(safe-area-inset-top);
     }
 }
+
+/* ---------- 性能：移动端关闭毛玻璃 ----------
+   各页面内联样式里累计十几到二十多层 backdrop-filter（博客最多），
+   手机上滚动时每帧都要重算背景模糊，直接掉帧。
+   这里用通配兜底：backdrop-filter: none 不会创建合成层，关掉是纯收益。 */
+@media (max-width: 820px) {
+
+    *,
+    *::before,
+    *::after {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+}
+
+/* 桌面端也降一档：大面积的 20-25px 模糊压到 8px，
+   视觉差别很小，但高斯核小了一半以上。 */
+@media (min-width: 821px) {
+
+    .navbar,
+    .card,
+    .glass-card,
+    .post-card,
+    .tool-card,
+    .chat-panel,
+    .chat-intro {
+        backdrop-filter: blur(8px) !important;
+        -webkit-backdrop-filter: blur(8px) !important;
+    }
+}
