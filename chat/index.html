@@ -3861,10 +3861,37 @@
             if (adminBtn) adminBtn.style.display = r.isAdmin ? 'inline-flex' : 'none';
             await initIdentity();
         } catch (e) {
-            if (e.status === 401) {
-                localStorage.removeItem('token');
-                state.me = null;
+            // 不在这里删 token：可能只是校验服务临时不可用，删了会把主站也一起登出
+            state.me = null;
+            state.isAdmin = false;
+            if (e.status === 503) {
+                toast('登录校验暂时不可用，稍后自动重试', true);
+                setTimeout(function () { syncAuthIfChanged(true); }, 6000);
             }
+        }
+    }
+
+    var lastSeenToken = localStorage.getItem('token');
+    async function syncAuthIfChanged(force) {
+        var t = localStorage.getItem('token');
+        if (!force && t === lastSeenToken) return;
+        var authChanged = (t === lastSeenToken) === false;
+        lastSeenToken = t;
+        await loadMe();
+        if (state.me) {
+            await loadConversations();
+            connectStream();
+            if (authChanged && state.activeId) openConversation(state.activeId);
+        } else {
+            state.convs = [];
+            renderConvList();
+            if (state.es) { state.es.close(); state.es = null; }
+            $('chatMeName').textContent = '游客';
+            $('chatMeSub').textContent = '仅可浏览公开群聊';
+            var ab = $('adminOpenBtn');
+            if (ab) ab.style.display = 'none';
+            renderHeader();
+            renderComposer();
         }
     }
 
@@ -4356,6 +4383,11 @@
                 openModal($('reportModal'));
             }
         });
+
+        // 别的标签页登录/退出、或从主站切回来时自动同步
+        window.addEventListener('storage', function (ev) { if (ev.key === 'token') syncAuthIfChanged(); });
+        window.addEventListener('focus', function () { syncAuthIfChanged(); });
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) syncAuthIfChanged(); });
 
         // 登录状态变化（模板 login 成功后调用 renderUser）
         if (typeof renderUser === 'function') {
