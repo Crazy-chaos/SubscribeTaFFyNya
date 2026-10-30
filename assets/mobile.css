@@ -1,0 +1,101 @@
+/* =========================================================================
+   全站移动端统一样式（iOS 优先）
+   放在各页面 <head> 最后，用来覆盖各页面内联样式里的移动端差异。
+   只处理导航栏与登录区，不改页面主体。
+   ========================================================================= */
+
+@media (max-width: 768px) {
+    /* 导航条不再横向溢出：左右两块都允许收缩，超出直接裁掉 */
+    .navbar-container {
+        width: calc(100% - 16px) !important;
+        gap: 6px;
+        overflow: hidden;
+    }
+
+    .navbar-left {
+        gap: 6px !important;
+        min-width: 0;
+        flex: 0 1 auto;
+    }
+
+    .nav-links {
+        display: none !important;
+    }
+
+    /* 「个人简介」按钮收成圆形头像，避免手机上一颗大胶囊撑满导航 */
+    .header-profile-container {
+        flex: none;
+        min-width: 0;
+    }
+
+    .header-profile-btn {
+        width: 38px;
+        height: 38px;
+        padding: 0 !important;
+        gap: 0 !important;
+        border-radius: 50% !important;
+        justify-content: center;
+        flex: none;
+    }
+
+    .header-profile-btn span {
+        display: none !important;
+    }
+
+    .header-profile-avatar {
+        width: 30px;
+        height: 30px;
+        margin: 0 !important;
+    }
+
+    .hamburger-btn {
+        flex: none;
+    }
+
+    /* 登录区：保证登录按钮/头像始终可见，不被挤出去 */
+    .auth-section {
+        gap: 6px !important;
+        flex: none;
+        min-width: 0;
+        margin-left: auto;
+    }
+
+    .auth-login-btn {
+        padding: 7px 14px !important;
+        font-size: 0.82rem !important;
+        white-space: nowrap;
+        flex: none;
+    }
+
+    .auth-user-pill {
+        width: 38px;
+        height: 38px;
+        padding: 2px !important;
+        border-radius: 50% !important;
+        justify-content: center;
+        flex: none;
+        gap: 0 !important;
+    }
+
+    .auth-user-text {
+        display: none !important;
+    }
+
+    .auth-avatar {
+        width: 32px;
+        height: 32px;
+        margin: 0 !important;
+    }
+
+    /* 退出登录收进个人设置弹窗，导航上不占位 */
+    .auth-logout-btn {
+        display: none !important;
+    }
+}
+
+/* iOS 添加到主屏幕：没有浏览器工具栏，给顶部多留 2px，避免贴边 */
+@media (display-mode: standalone) and (max-width: 768px) {
+    .navbar {
+        padding-top: env(safe-area-inset-top);
+    }
+}

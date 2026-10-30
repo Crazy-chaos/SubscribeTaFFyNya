@@ -2264,6 +2264,7 @@
 }
 
     </style>
+    <link rel="stylesheet" href="/assets/mobile.css">
 </head>
 <body>
 
@@ -3379,6 +3380,7 @@
         var tk = opts.token !== undefined ? opts.token : localStorage.getItem('token');
         var res = await fetch(CHAT_API + path, {
             method: opts.method || 'GET',
+            credentials: 'include',
             headers: Object.assign(
                 {},
                 tk ? { Authorization: tk } : {},
@@ -3938,7 +3940,10 @@
         var b = m.body || {};
         var tk = localStorage.getItem('token');
         var path = b.key.split('/').map(encodeURIComponent).join('/');
-        var res = await fetch(CHAT_API + '/api/blob/' + path, { headers: tk ? { Authorization: tk } : {} });
+        var res = await fetch(CHAT_API + '/api/blob/' + path, {
+            credentials: 'include',
+            headers: tk ? { Authorization: tk } : {}
+        });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         var buf = await res.arrayBuffer();
         if (b.enc) {
@@ -4179,6 +4184,7 @@
             }
             var up = await fetch(CHAT_API + '/api/upload?conv=' + encodeURIComponent(conv.id), {
                 method: 'POST',
+                credentials: 'include',
                 headers: {
                     Authorization: localStorage.getItem('token') || '',
                     'Content-Type': ctype
@@ -4397,11 +4403,8 @@
     /* ------------------------------------------------------------ 数据加载 */
     async function loadMe() {
         var token = localStorage.getItem('token');
-        if (!token) {
-            state.me = null;
-            state.isAdmin = false;
-            return;
-        }
+        // 即使本机没有 token 也要试一次：cloud-mail 写的是 .crazychaos.top 域 cookie，
+        // 带上凭据请求就能直接认出来，避免“主站登录了、聊天还要再登一次”。
         try {
             var r = await capi('/api/me');
             state.me = r.user;
@@ -4418,10 +4421,14 @@
             // 不在这里删 token：可能只是校验服务临时不可用，删了会把主站也一起登出
             state.me = null;
             state.isAdmin = false;
-            if (e.status === 503) {
-                toast('登录校验暂时不可用，稍后自动重试', true);
-                setTimeout(function () { syncAuthIfChanged(true); }, 6000);
-            }
+            var st = e.status || 0;
+            var why = st === 401 ? '登录已失效（HTTP 401）'
+                : st === 503 ? '校验服务暂时不可用（HTTP 503）'
+                    : st ? ('校验失败（HTTP ' + st + '）') : '网络异常';
+            $('chatMeSub').textContent = why + ' · 点此重试';
+            $('chatMeName').textContent = '未登录';
+            toast('聊天身份校验失败：' + why, true);
+            if (st === 503) setTimeout(function () { syncAuthIfChanged(true); }, 6000);
         }
     }
 
@@ -4475,7 +4482,7 @@
         var url = CHAT_API + '/api/stream?convs=' + encodeURIComponent(convs.slice(0, 40).join(',')) +
             (token ? '&token=' + encodeURIComponent(token) : '');
         try {
-            var es = new EventSource(url);
+            var es = new EventSource(url, { withCredentials: true });
             state.es = es;
             es.addEventListener('message', function (ev) {
                 var msg = JSON.parse(ev.data);
@@ -5189,6 +5196,7 @@
             try {
                 var res = await fetch(CHAT_API + '/api/me/avatar/upload', {
                     method: 'POST',
+                    credentials: 'include',
                     headers: {
                         Authorization: localStorage.getItem('token') || '',
                         'Content-Type': file.type || 'image/png'
@@ -5219,6 +5227,19 @@
         $('pushDisable').onclick = disablePush;
         $('pushTest').onclick = testPush;
         $('saveGlobalQQ').onclick = saveGlobalQQ;
+
+        var meCard = document.querySelector('.chat-me');
+        if (meCard) {
+            meCard.style.cursor = 'pointer';
+            meCard.title = '点击重新校验登录状态';
+            meCard.addEventListener('click', function (ev) {
+                if (ev.target && ev.target.id === 'keyBtn') return;
+                if (ev.target && ev.target.id === 'notifyBtn') return;
+                if (ev.target && ev.target.id === 'chatMeAvatar') return;
+                if (!localStorage.getItem('token')) return openLogin('登录后即可发言');
+                syncAuthIfChanged(true);
+            });
+        }
 
         var meAv = $('chatMeAvatar');
         if (meAv) {
