@@ -3600,6 +3600,13 @@
             identity.id = state.me.id;
             identity.pubB64 = local.pubB64;
             identity.priv = await importPriv(local.privB64);
+            // 本机有私钥但服务器上没有公钥：静默补传一次，
+            // 否则别人拿不到你的公钥，就发不了端到端加密消息。
+            if (!state.hasKey && local.pubB64) {
+                capi('/chat/me/keys', { method: 'POST', body: { pubKey: local.pubB64 } })
+                    .then(function () { state.hasKey = true; })
+                    .catch(function () { });
+            }
             return true;
         }
         if (!state.hasKey) return await createIdentity();
