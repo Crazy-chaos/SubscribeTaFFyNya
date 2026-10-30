@@ -4836,6 +4836,12 @@
         el.className = 'modal-msg' + (isErr ? ' error' : '');
     }
 
+    function bytesToB64u(bytes) {
+        var s2 = '';
+        for (var i = 0; i < bytes.length; i++) s2 += String.fromCharCode(bytes[i]);
+        return btoa(s2).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
     function b64uToBytes(str) {
         var s2 = String(str || '').replace(/-/g, '+').replace(/_/g, '/');
         var bin = atob(s2 + '='.repeat((4 - s2.length % 4) % 4));
@@ -4891,6 +4897,18 @@
             var cfg = await capi('/chat/push/config');
             var reg = await ensureSW();
             var sub = await reg.pushManager.getSubscription();
+            if (sub) {
+                // 服务器换过 VAPID 密钥（旧订阅绑定的是旧公钥），推送会被拒，
+                // 这种情况必须退订重来，否则永远收不到通知。
+                var usedKey = sub.options && sub.options.applicationServerKey;
+                if (usedKey) {
+                    var usedB64 = bytesToB64u(new Uint8Array(usedKey));
+                    if (usedB64 !== cfg.publicKey) {
+                        await sub.unsubscribe().catch(function () { });
+                        sub = null;
+                    }
+                }
+            }
             if (!sub) {
                 sub = await reg.pushManager.subscribe({
                     userVisibleOnly: true,
