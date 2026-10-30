@@ -2442,7 +2442,6 @@
                         <div class="chat-me-sub" id="chatMeSub">仅可浏览公开群聊</div>
                     </div>
                     <button class="chat-key-btn" id="notifyBtn" type="button" title="新消息提醒">🔔</button>
-                    <button class="chat-key-btn" id="keyBtn" type="button" title="端到端加密密钥">🔑</button>
                 </div>
             </aside>
 
@@ -2518,14 +2517,9 @@
                 <option value="approval" selected>需要群主审批</option>
                 <option value="invite">仅邀请码</option>
             </select>
-            <label for="cgEncMode">消息加密</label>
-            <select id="cgEncMode">
-                <option value="e2ee" selected>端到端加密 · 服务器只存密文，谁都解不开</option>
-                <option value="plain">明文 · 游客可读、可被管理员与 QQ 机器人读取</option>
-            </select>
             <p class="field-hint">
-                提示：公开群 + 明文 才能让游客直接读到内容，也才能推送到 QQ 机器人；
-                私密群强制走「邀请码 + 审批」，且只能端到端加密。
+                提示：公开群任何人都能浏览，登录后才能发言；私密群需要邀请码并通过群主审批。
+                消息保存在服务器上，只有群成员能通过接口读取。
             </p>
             <div class="auth-actions">
                 <button type="button" id="cgCancel">取消</button>
@@ -2563,19 +2557,6 @@
             </div>
             <div class="modal-msg" id="dmMsg"></div>
         </form>
-    </div>
-
-    <!-- ===== 密钥 / 恢复码 ===== -->
-    <div class="auth-modal chat-modal" id="keyModal" aria-hidden="true">
-        <div class="auth-card">
-            <h2>端到端加密密钥</h2>
-            <div id="keyModalBody"></div>
-            <div class="modal-msg" id="keyMsg"></div>
-            <div class="auth-actions">
-                <button type="button" id="keyClose">关闭</button>
-            </div>
-            <div class="modal-msg" id="keyMsg"></div>
-        </div>
     </div>
 
     <!-- ===== 新消息提醒 ===== -->
@@ -3867,9 +3848,8 @@
             var priv = c.visibility === 'private';
             var meta = priv
                 ? '私密群 · 需要邀请码'
-                : ((c.encMode === 'e2ee' ? '端到端加密' : (c.description || '公开群组')) + ' · ' + c.memberCount + '人');
-            var tags = (priv ? '<span class="tag-lock">私密</span>' : '') +
-                (c.encMode === 'e2ee' ? '<span class="tag-lock">🔒</span>' : '');
+                : ((c.description || '公开群组') + ' · ' + c.memberCount + '人');
+            var tags = priv ? '<span class="tag-lock">私密</span>' : '';
             return '<div class="conv-item" data-id="' + esc(c.id) + '">' +
                 avatarHTML(c.avatar, c.name, c.id, 'conv-avatar') +
                 '<div class="conv-body"><div class="conv-name">' + esc(c.name) + tags + '</div>' +
@@ -4085,9 +4065,6 @@
             renderComposer();
             renderInfo();
 
-            if (state.me && state.active.encMode === 'e2ee' && identity.priv) {
-                try { await keyForConversation(state.active); } catch (e) { console.warn(e.message); }
-            }
             try {
                 await loadMessages();
             } catch (err) {
@@ -4096,7 +4073,7 @@
                     '凭邀请码加入并通过审批后才能看到内容</span></div>';
             }
             connectStream();
-            if (state.me && identity.priv) {
+            if (state.me) {
                 var last = state.messages[state.messages.length - 1];
                 if (last) capi('/chat/conversations/' + id + '/read', { method: 'POST', body: { id: last.id } }).catch(function () { });
             }
@@ -4109,8 +4086,7 @@
         if (!state.active) return;
         var res = await capi('/chat/conversations/' + state.active.id + '/messages?limit=60');
         var list = res.messages || [];
-        if (state.me && identity.priv) await decryptMessages(state.active, list);
-        else list.forEach(function (m) { m._text = m.body && typeof m.body.text === 'string' ? m.body.text : '[加密消息]'; });
+        list.forEach(function (m) { m._text = msgText(m); });
         state.messages = list;
         renderMessages(true);
     }
@@ -4132,15 +4108,7 @@
         var btn = $('sendBtn');
         btn.disabled = true;
         try {
-            var body;
-            if (conv.encMode === 'e2ee') {
-                var key = await keyForConversation(conv);
-                if (!key) throw new Error('还没有拿到群密钥，等群主分发后再试');
-                body = await encryptText(key, text);
-            } else {
-                body = { text: text };
-            }
-            var msg = await capi('/chat/conversations/' + conv.id + '/messages', { method: 'POST', body: { kind: 'text', body: body } });
+            var msg = await capi('/chat/conversations/' + conv.id + '/messages', { method: 'POST', body: { kind: 'text', body: { text: text } } });
             msg._text = text;
             if (!state.messages.some(function (m) { return m.id === msg.id; })) {
                 state.messages.push(msg);
@@ -4190,14 +4158,6 @@
             var ctype = packed.blob.type || 'image/jpeg';
             var body = packed.blob;
             var iv = '';
-            if (conv.encMode === 'e2ee') {
-                var gk = await keyForConversation(conv);
-                if (!gk) throw new Error('还没拿到群密钥，等群主分发后再发');
-                var ivBytes = crypto.getRandomValues(new Uint8Array(12));
-                iv = b64(ivBytes);
-                body = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: ivBytes }, gk, await packed.blob.arrayBuffer());
-                ctype = 'application/octet-stream';
-            }
             var up = await fetch(CHAT_API + '/chat/upload?conv=' + encodeURIComponent(conv.id), {
                 method: 'POST',
                 credentials: 'include',
@@ -4252,7 +4212,7 @@
             '<div class="info-desc">' + esc(conv.description || (conv.type === 'dm' ? '私聊' : '还没有简介')) + '</div>' +
             kv('可见性', conv.visibility === 'public' ? '公开' : '私密') +
             kv('加入方式', { open: '自由加入', approval: '需要审批', invite: '邀请码' }[conv.joinMode] || '-') +
-            kv('消息加密', conv.encMode === 'e2ee' ? '端到端加密' : '明文（服务端可读）') +
+            kv('消息存储', '服务端明文，仅群成员可读') +
             '</div>';
 
         if (conv.type === 'group') {
@@ -4266,7 +4226,6 @@
                 html += '<button class="btn-sm" data-act="invite">生成邀请码</button>';
                 if (conv.pendingCount) html += '<button class="btn-sm" data-act="pending">待审批 ' + conv.pendingCount + '</button>';
             }
-            if (conv.encMode === 'e2ee' && isAdminRole) html += '<button class="btn-sm" data-act="redistribute">分发群密钥</button>';
             if (isOwner) html += '<button class="btn-sm danger" data-act="archive">解散群组</button>';
             else if (conv.myStatus === 'active') html += '<button class="btn-sm" data-act="leave">退出群组</button>';
             html += '</div><div id="infoInviteBox" style="margin-top:10px;"></div></div>';
@@ -4277,19 +4236,14 @@
         state.members.filter(function (m) { return m.status === 'active'; }).forEach(function (m) {
             var roleTxt = m.role === 'owner' ? '群主' : (m.role === 'admin' ? '管理' : '');
             html += '<div class="member-row">' + avatarHTML(m.avatar, m.nickname, m.id, 'msg-avatar') +
-                '<span class="member-name">' + esc(m.nickname) + (m.id === identity.id ? '（我）' : '') +
+                '<span class="member-name">' + esc(m.nickname) + (state.me && m.id === state.me.id ? '（我）' : '') +
                 '<span class="member-uid">UID ' + esc(String(m.uid || '-')) + '</span></span>' +
                 (roleTxt ? '<span class="m-role">' + roleTxt + '</span>' : '') +
-                (isAdminRole && m.role !== 'owner' && m.id !== identity.id ? '<button class="btn-sm" data-kick="' + esc(m.id) + '" style="padding:2px 7px;">移出</button>' : '') +
+                (isAdminRole && m.role !== 'owner' && !(state.me && m.id === state.me.id) ? '<button class="btn-sm" data-kick="' + esc(m.id) + '" style="padding:2px 7px;">移出</button>' : '') +
                 '</div>';
         });
         html += '</div>';
 
-        if (conv.encMode === 'e2ee') {
-            html += '<div class="info-section"><h3>加密状态</h3><div class="info-desc" style="font-size:0.74rem;">' +
-                (identity.priv ? '本机已持有私钥，可以解密。' : '本机没有私钥，无法解密——请到 🔑 里恢复密钥。') +
-                '</div></div>';
-        }
         box.innerHTML = html;
 
         box.querySelectorAll('[data-act]').forEach(function (btn) {
@@ -4312,12 +4266,6 @@
         if (act === 'addMember') { openAddMember(); return; }
         if (act === 'invite') { await createInvite(conv); return; }
         if (act === 'pending') { await showPending(conv); return; }
-        if (act === 'redistribute') {
-            var gk = state.gkCache.get(conv.id) || await ensureGroupKey(conv);
-            if (!gk) return toast('本机没有群密钥，无法分发', true);
-            await distributeKeys(conv, gk);
-            return;
-        }
         if (act === 'leave') {
             if (!confirm('确定退出这个群？')) return;
             await capi('/chat/conversations/' + conv.id + '/leave', { method: 'POST', body: {} });
@@ -4425,14 +4373,12 @@
             var r = await capi('/chat/me');
             state.me = r.user;
             state.isAdmin = r.isAdmin;
-            state.hasKey = r.hasKey;
             $('chatMeName').textContent = r.user.nickname || r.user.id.split('@')[0];
             $('chatMeSub').textContent = 'UID ' + (r.user.uid || '-') + (r.isAdmin ? ' · 管理员' : '');
             var adminBtn = $('adminOpenBtn');
             if (adminBtn) adminBtn.style.display = r.isAdmin ? 'inline-flex' : 'none';
             applyAvatar(r.user.avatar);
             addAvatarEntryToProfileModal();
-            await initIdentity();
         } catch (e) {
             // 不在这里删 token：可能只是校验服务临时不可用，删了会把主站也一起登出
             state.me = null;
@@ -4529,8 +4475,7 @@
             var list = (res && res.messages) || [];
             if (!list.length) return;
 
-            if (state.me && identity.priv) await decryptMessages(conv, list);
-            else list.forEach(function (m) { m._text = msgText(m); });
+            list.forEach(function (m) { m._text = msgText(m); });
 
             var added = 0;
             list.forEach(function (m) {
@@ -4542,7 +4487,7 @@
 
             renderMessages(true);
             refreshListSoon();
-            if (state.me && identity.priv) {
+            if (state.me) {
                 var last = state.messages[state.messages.length - 1];
                 if (last) capi('/chat/conversations/' + conv.id + '/read', { method: 'POST', body: { id: last.id } }).catch(function () { });
             }
@@ -4556,7 +4501,6 @@
             $('cgMsg').textContent = '';
             $('cgVisibility').value = 'public';
             $('cgJoinMode').value = 'approval';
-            $('cgEncMode').value = 'plain';
             openModal($('createGroupModal'));
         };
         $('cgCancel').onclick = function () { closeModal($('createGroupModal')); };
@@ -4565,11 +4509,8 @@
             if (priv) {
                 $('cgJoinMode').value = 'invite';
                 $('cgJoinMode').disabled = true;
-                $('cgEncMode').value = 'e2ee';
-                $('cgEncMode').disabled = true;
             } else {
                 $('cgJoinMode').disabled = false;
-                $('cgEncMode').disabled = false;
             }
         };
         $('createGroupForm').onsubmit = async function (ev) {
@@ -4586,7 +4527,7 @@
                         description: $('cgDesc').value.trim(),
                         visibility: $('cgVisibility').value,
                         joinMode: $('cgVisibility').value === 'private' ? 'invite' : $('cgJoinMode').value,
-                        encMode: $('cgVisibility').value === 'private' ? 'e2ee' : $('cgEncMode').value
+                        encMode: 'plain'
                     }
                 });
                 closeModal($('createGroupModal'));
@@ -4595,9 +4536,6 @@
                 toast('群组已创建');
                 await loadConversations();
                 openConversation(conv.id);
-                if (conv.encMode === 'e2ee') {
-                    try { await keyForConversation(state.active); } catch (e) { console.warn(e); }
-                }
             } catch (e) {
                 msg.textContent = e.message;
                 msg.className = 'modal-msg error';
@@ -4684,6 +4622,7 @@
     }
 
     function wireKeyModal() {
+        if (!$('keyModal')) return;
         $('keyClose').onclick = function () { closeModal($('keyModal')); };
         $('keyBtn').onclick = async function () {
             if (!state.me) return openLogin('登录后才能管理加密密钥');
