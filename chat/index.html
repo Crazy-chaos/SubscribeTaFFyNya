@@ -3663,11 +3663,29 @@
 (function () {
     'use strict';
 
-    /* 后端跑在 cloud-mail 的 Cloudflare Worker 里（D1 + KV + R2），
-       与邮箱同域，登录 cookie 自动共享，不再需要单独的隧道或端口。 */
-    var CHAT_ORIGIN = 'https://mail.crazychaos.top';
+    /* 后端跑在 cloud-mail 的 Cloudflare Worker 里（D1 + KV + R2）。
+       浏览器直接访问时不注入配置，走下面的线上地址；
+       桌面/手机壳会在页面加载前写入 window.__TAFFY_CFG__：
+         { apiOrigin: 'https://mail.crazychaos.top',
+           assetBase: 'https://www.crazychaos.top',
+           shell: true }
+       assetBase 用来把 /123、/assets 这类站内绝对路径拼成完整地址，
+       否则在壳里会指向 tauri://localhost 而 404。 */
+    var CFG = (typeof window !== 'undefined' && window.__TAFFY_CFG__) || {};
+    var CHAT_ORIGIN = String(CFG.apiOrigin || 'https://mail.crazychaos.top').replace(/\/+$/, '');
     var CHAT_API = CHAT_ORIGIN + '/api';
+    var ASSET_BASE = String(CFG.assetBase || '').replace(/\/+$/, '');
+    var IN_SHELL = Boolean(CFG.shell);
     var LOGIN_REQUIRED = '登录后才能发言';
+
+    function assetUrl(p) {
+        var v = String(p == null ? '' : p);
+        if (!v) return '';
+        if (/^https?:\/\//i.test(v)) return v;
+        if (v.indexOf('/api/chat/avatar/') === 0) return CHAT_ORIGIN + v;
+        if (!ASSET_BASE) return v;
+        return ASSET_BASE + (v.charAt(0) === '/' ? v : '/' + v);
+    }
 
     var $ = function (id) { return document.getElementById(id); };
     var esc = function (s) {
@@ -4186,8 +4204,8 @@
         var webp = [1, 2, 3, 7, 8, 10, 11, 12, 13, 14, 15, 16, 21];
         var avif = [4, 5, 6, 9, 17, 18, 19, 20, 22, 23, 24];
         var all = [];
-        webp.forEach(function (i) { all.push({ n: i, src: '/123/emoji_' + i + '.webp' }); });
-        avif.forEach(function (i) { all.push({ n: i, src: '/123/emoji_' + i + '.avif' }); });
+        webp.forEach(function (i) { all.push({ n: i, src: assetUrl('/123/emoji_' + i + '.webp') }); });
+        avif.forEach(function (i) { all.push({ n: i, src: assetUrl('/123/emoji_' + i + '.avif') }); });
         all.sort(function (a, b) { return a.n - b.n; });
         return all.map(function (x) { return x.src; });
     })();
@@ -4196,9 +4214,8 @@
         var s2 = (typeof v === 'string' ? v : (v && v.avatar)) || '';
         if (!s2) return '';
         if (s2.indexOf('http://') === 0 || s2.indexOf('https://') === 0) return s2;
-        if (s2.indexOf('/api/chat/avatar/') === 0) return CHAT_ORIGIN + s2;
         s2 = s2.replace(/^(\.\.\/)+/, '').replace(/^\.\//, '');
-        return s2.charAt(0) === '/' ? s2 : '/' + s2;
+        return assetUrl(s2.charAt(0) === '/' ? s2 : '/' + s2);
     }
 
     function avatarHTML(src, name, seed, cls) {
@@ -5471,7 +5488,7 @@
         var row = document.createElement('div');
         row.className = 'avatar-row';
         row.id = 'profileAvatarRow';
-        row.innerHTML = '<img id="modalAvatarImg" src="/123/emoji_23.avif" alt="头像">' +
+        row.innerHTML = '<img id="modalAvatarImg" src="' + esc(assetUrl('/123/emoji_23.avif')) + '" alt="头像">' +
             '<button type="button" class="btn-sm primary" id="modalAvatarBtn">修改头像</button>';
         var anchor = card.querySelector('label');
         card.insertBefore(row, anchor || card.firstChild);
